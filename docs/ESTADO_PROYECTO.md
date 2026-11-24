@@ -198,6 +198,10 @@
 
     **Decisión de diseño:** se evaluó embeber una clave compartida en el repo público y se descartó — una sola clave compartida entre todos los clones de GitHub viola los TOS de Groq, es extraíble del historial de git, y cualquier abuso la revoca para todos. El proxy resuelve esto moviendo la clave a un servidor que el operador controla y limita, sin exponerla nunca al cliente.
 
+24. **Prueba end-to-end con clave real de Groq** (servidor local, clave descartada tras la prueba, nunca commiteada — verificado en el historial de git): confirmó rate limiting (ventana deslizante, N peticiones exactas permitidas, N+1 bloqueada con 429), y el pipeline completo (`interpretar_instruccion` → `optimizar_distribucion` → DXF) funcionando en ~6.5 s de punta a punta vía `LLM_PROVIDER=proxy`.
+    - **Hallazgo:** el modelo default `mixtral-8x7b-32768` está descontinuado en Groq (`model_decommissioned`, HTTP 400). Confirmado contra `/v1/models` con la clave real: el catálogo vigente no incluye mixtral ni llama2/3 clásicos. Nuevo default: `openai/gpt-oss-20b` (responde JSON limpio, rápido).
+    - **Bug encontrado en `.gitignore`:** el patrón `.env.*` excluía también `.env.example` (la plantilla pública sin secretos), por lo que nunca se había versionado pese a crearse en la Fase 2. Corregido con `!.env.example`.
+
 ## Siguientes etapas
 1. Fase 3: Tests y CI multiproveedor.
 2. Fase 4: UI mejorada con selector de proveedor.
