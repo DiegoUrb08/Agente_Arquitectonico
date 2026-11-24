@@ -23,6 +23,7 @@ def chat_con_reintentos(
     reintentos: int = REINTENTOS,
     timeout: float = TIMEOUT_SEGUNDOS,
     espera: float = ESPERA_REINTENTO_SEGUNDOS,
+    historial: list | None = None,
     **kwargs,
 ):
     """
@@ -32,6 +33,9 @@ def chat_con_reintentos(
     Los errores de petición inválida (HTTP 4xx, p. ej. modelo
     inexistente) no se reintentan. Al agotar los intentos lanza
     OllamaError con un mensaje claro.
+
+    Si se pasa `historial` (lista mutable), apenda por cada intento:
+        {"intento": N, "tiempo_s": T, "ok": bool, "error": str|None}
     """
 
     cliente = ollama.Client(timeout=timeout)
@@ -39,20 +43,50 @@ def chat_con_reintentos(
 
     for intento in range(reintentos + 1):
 
+        t0 = time.perf_counter()
         try:
-            return cliente.chat(model=model, messages=messages, **kwargs)
+            respuesta = cliente.chat(model=model, messages=messages, **kwargs)
+            if historial is not None:
+                historial.append({
+                    "intento": intento + 1,
+                    "tiempo_s": round(time.perf_counter() - t0, 2),
+                    "ok": True,
+                    "error": None,
+                })
+            return respuesta
 
         except ollama.ResponseError as error:
             ultimo_error = error
+            if historial is not None:
+                historial.append({
+                    "intento": intento + 1,
+                    "tiempo_s": round(time.perf_counter() - t0, 2),
+                    "ok": False,
+                    "error": str(error)[:120],
+                })
             if 400 <= getattr(error, "status_code", 0) < 500:
                 break
 
         except (ConnectionError, TimeoutError, OSError) as error:
             ultimo_error = error
+            if historial is not None:
+                historial.append({
+                    "intento": intento + 1,
+                    "tiempo_s": round(time.perf_counter() - t0, 2),
+                    "ok": False,
+                    "error": str(error)[:120],
+                })
 
         except Exception as error:
             # httpx y similares: se tratan como fallos de transporte.
             ultimo_error = error
+            if historial is not None:
+                historial.append({
+                    "intento": intento + 1,
+                    "tiempo_s": round(time.perf_counter() - t0, 2),
+                    "ok": False,
+                    "error": str(error)[:120],
+                })
 
         if intento < reintentos:
             time.sleep(espera)

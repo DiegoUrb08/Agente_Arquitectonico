@@ -109,6 +109,33 @@ def test_reintenta_y_se_recupera(monkeypatch):
     assert cliente.llamadas == 3
 
 
+def test_historial_registra_intentos_fallidos_y_exitoso(monkeypatch):
+    cliente = _ClienteFalso(fallos=1, error=ConnectionError("caído"))
+    _parchear_cliente(monkeypatch, cliente)
+
+    hist = []
+    chat_con_reintentos(messages=[], reintentos=2, espera=0, historial=hist)
+
+    assert len(hist) == 2
+    assert hist[0]["ok"] is False
+    assert hist[0]["error"] is not None
+    assert hist[1]["ok"] is True
+    assert hist[1]["error"] is None
+    assert all("tiempo_s" in h for h in hist)
+    assert all(h["intento"] == i + 1 for i, h in enumerate(hist))
+
+
+def test_historial_registra_unico_intento_exitoso(monkeypatch):
+    cliente = _ClienteFalso(fallos=0, error=None)
+    _parchear_cliente(monkeypatch, cliente)
+
+    hist = []
+    chat_con_reintentos(messages=[], reintentos=2, espera=0, historial=hist)
+
+    assert len(hist) == 1
+    assert hist[0]["ok"] is True
+
+
 def test_agota_reintentos_y_lanza_ollama_error(monkeypatch):
     cliente = _ClienteFalso(fallos=99, error=ConnectionError("caído"))
     _parchear_cliente(monkeypatch, cliente)
@@ -137,6 +164,47 @@ def test_consultar_modelo_devuelve_mensaje_de_error(monkeypatch):
 
     monkeypatch.setattr(ollama_client, "chat_con_reintentos", falla)
     assert "Error al comunicarse" in ollama_client.consultar_modelo("hola")
+
+
+# ---------------- diagnóstico de reintentos en interpretar_instruccion ----------------
+
+def test_interpretar_instruccion_anota_reintentos_en_observaciones(monkeypatch):
+    """Cuando el LLM necesita más de un intento, aparece una nota [LLM] en observaciones."""
+    datos_ok = {
+        "tipo_proyecto": "vivienda",
+        "ancho_terreno_m": 10.0,
+        "largo_terreno_m": 20.0,
+        "ambientes": [{"nombre": "sala", "cantidad": 1}],
+    }
+
+    def _chat_dos_intentos(**kw):
+        # Simula que internamente hubo un reintento: llena historial con 2 entradas.
+        hist = kw.get("historial")
+        if hist is not None:
+            hist.append({"intento": 1, "tiempo_s": 5.0, "ok": False, "error": "timeout"})
+            hist.append({"intento": 2, "tiempo_s": 3.0, "ok": True, "error": None})
+        return _respuesta(datos_ok)
+
+    monkeypatch.setattr(interpreter, "chat_con_reintentos", _chat_dos_intentos)
+    req = interpreter.interpretar_instruccion("casa 10x20 con sala")
+
+    notas_llm = [o for o in req.observaciones if o.startswith("[LLM]")]
+    assert notas_llm, "Se esperaba nota de reintentos en observaciones"
+    assert "2 intentos" in notas_llm[0]
+
+
+def test_interpretar_instruccion_sin_reintentos_no_anota(monkeypatch):
+    datos = {
+        "tipo_proyecto": "vivienda",
+        "ancho_terreno_m": 10.0,
+        "largo_terreno_m": 20.0,
+        "ambientes": [{"nombre": "sala", "cantidad": 1}],
+    }
+    monkeypatch.setattr(interpreter, "chat_con_reintentos", lambda **kw: _respuesta(datos))
+    req = interpreter.interpretar_instruccion("casa 10x20 con sala")
+
+    notas_llm = [o for o in req.observaciones if o.startswith("[LLM]")]
+    assert not notas_llm
 
 
 # ---------------- fallback regex terreno ----------------

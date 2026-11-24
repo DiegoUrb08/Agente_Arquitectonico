@@ -248,8 +248,11 @@ def main():
         print(f"[{i}/{len(casos)}] {caso['id']} ...", flush=True)
         res = correr(caso)
         resultados.append(res)
+        obs_llm = [o for o in (res.get("requerimientos") or {}).get("observaciones", [])
+                   if o.startswith("[LLM]")]
+        extra = f" {obs_llm[0]}" if obs_llm else ""
         print(f"    interpretacion={res['interpretacion']} "
-              f"{res['tiempo_interpretacion_s']}s plano={res.get('plano')}", flush=True)
+              f"{res['tiempo_interpretacion_s']}s plano={res.get('plano')}{extra}", flush=True)
         salida.write_text(json.dumps(resultados, ensure_ascii=False, indent=2), encoding="utf-8")
     print("LISTO", salida)
 
