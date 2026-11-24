@@ -1,6 +1,6 @@
 ﻿# Estado del proyecto – Agente Arquitectónico
 
-Última actualización: 2026-11-24 (tras completar las siguientes etapas).
+Última actualización: 2026-11-24 (tras completar benchmark y 3 correcciones).
 
 ## Entorno y herramientas
 - `.venv` funcional: Python 3.14.7, streamlit 1.67, ollama 0.6.3, ortools 9.15, shapely 2.2, ezdxf 1.4.5, pydantic 2.14, pytest 9.2.
@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **87 pruebas pytest, todas pasan** (~10 s): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos y errores), pipeline completo y arranque de la UI con `streamlit.testing.AppTest`.
+- **101 pruebas pytest, todas pasan** (~13 s): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -84,11 +84,12 @@
 - Las ventanas tienen ancho fijo por tipo de ambiente (sin altura de alféizar ni orientación solar) y se colocan en cualquier pared exterior, incluso la que da a un hueco interior entre ambientes.
 - El editor solo opera con habitaciones rectangulares y DXF en metros.
 - En distribuciones muy compactas, `modificar_area` y `mover_ambiente` suelen rechazar el cambio por falta de espacio (comportamiento correcto, pero limitante).
-- Ambientes fuera de catálogo (p. ej. "piscina") pasan sin rechazo si el modelo les asigna un área válida (ver hallazgo 1 del benchmark).
 - Sin remoto Git ni CI.
 
+## Correcciones del benchmark implementadas
+1. ~~**Lista blanca de ambientes**~~ **Implementado:** `AMBIENTES_VALIDOS` en `reglas_ambientes.py` (15 tipos); `_validar_ambientes` en `layout_optimizer.py` rechaza tipos fuera de catálogo antes de CP-SAT con mensaje claro. "piscina" se rechaza ahora.
+2. ~~**Extracción del terreno**~~ **Implementado:** fallback regex (`_extraer_terreno_por_regex`) en `interpreter.py`; se activa solo cuando el LLM devuelve ancho/largo/area_terreno todos nulos. Busca patrones `NxM` ("6 x 10 metros") y área ("200 m2"). Resuelve los 3 casos fallidos del benchmark (`minimo`, `habitantes`, `ingles_mezclado`).
+3. ~~**Reintentos y tiempos**~~ **Implementado:** `chat_con_reintentos` acepta `historial: list` opcional; apenda `{intento, tiempo_s, ok, error}` por cada llamada. `interpretar_instruccion` pasa el historial y, si hubo más de un intento, añade `"[LLM] N intentos: Xs + Ys"` a `requerimientos.observaciones`. El benchmark imprime esta nota en la línea de cada caso.
+
 ## Siguientes etapas
-1. **[Corrección]** Lista blanca de ambientes soportados: rechazar tipos fuera de catálogo con mensaje amigable antes de llegar al optimizador.
-2. ~~**[Corrección]** Segunda pasada de extracción del terreno si llega nulo pero el prompt contiene dimensiones.~~ **Implementado:** fallback regex (`_extraer_terreno_por_regex`) en `interpreter.py`; se activa solo cuando el LLM devuelve ancho/largo/area_terreno todos nulos. Resuelve los 3 casos fallidos del benchmark (`minimo`, `habitantes`, `ingles_mezclado`).
-3. ~~**[Corrección]** Registrar reintentos y tiempos parciales del intérprete para diagnosticar casos lentos.~~ **Implementado:** `chat_con_reintentos` acepta `historial: list` opcional; apenda `{intento, tiempo_s, ok, error}` por cada llamada. `interpretar_instruccion` pasa el historial y, si hubo más de un intento, añade `"[LLM] N intentos: Xs + Ys"` a `requerimientos.observaciones`. El benchmark imprime esta nota en la línea de cada caso.
-4. Más ampliaciones (más tipos de ambiente en las plantillas, varios pisos) y, después, BIM.
+1. Más ampliaciones (más tipos de ambiente en las plantillas, varios pisos) y, después, BIM.
