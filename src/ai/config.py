@@ -21,6 +21,8 @@ class LLMConfig:
             return LLMConfig._validar_groq()
         elif provider_name == "ollama":
             return LLMConfig._validar_ollama()
+        elif provider_name == "proxy":
+            return LLMConfig._validar_proxy()
         elif provider_name == "claude":
             return LLMConfig._validar_claude()
         elif provider_name == "openai":
@@ -53,6 +55,26 @@ class LLMConfig:
         host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         # La validación real ocurre cuando OllamaProvider intenta conectar
         return "ollama", {"host": host}
+
+    @staticmethod
+    def _validar_proxy() -> tuple[str, dict]:
+        """Valida configuración del proveedor proxy (servidor de un tercero)."""
+        proxy_url = os.getenv("PROXY_URL")
+        if not proxy_url:
+            raise ValueError(
+                "\n❌ PROXY_URL no configurada.\n"
+                "Para usar el modo demo (sin clave propia):\n"
+                "  1. Pide la URL del servidor demo al operador del proxy\n"
+                "  2. Copia en .env: PROXY_URL=https://...\n"
+                "  3. Si el operador exige token, agrega: PROXY_ACCESS_TOKEN=...\n"
+                "\n"
+                "Alternativa: usa tu propia clave con LLM_PROVIDER=groq\n"
+                "(gratis, sin límites del operador): https://console.groq.com/keys\n"
+            )
+        return "proxy", {
+            "proxy_url": proxy_url,
+            "access_token": os.getenv("PROXY_ACCESS_TOKEN"),
+        }
 
     @staticmethod
     def _validar_claude() -> tuple[str, dict]:
@@ -103,6 +125,15 @@ class LLMConfig:
                 f"Host: {host}\n"
                 f"Modelo: qwen3:8b (u otro instalado)\n"
                 "Precio: Gratis (local)\n"
+            )
+        elif provider == "proxy":
+            proxy_url = os.getenv("PROXY_URL", "(no configurada)")
+            return (
+                "🚀 Agente Arquitectónico con servidor Proxy (demo)\n"
+                "━" * 40 + "\n"
+                f"Servidor: {proxy_url}\n"
+                "Precio: Gratis, sujeto al límite del operador\n"
+                "Nota: para uso ilimitado, usa tu propia clave Groq\n"
             )
         elif provider == "mock":
             return (

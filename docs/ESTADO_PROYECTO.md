@@ -185,6 +185,19 @@
     - Hosts por defecto (Ollama)
     - Proveedores desconocidos
 
+23. **Servidor proxy (modo demo, sin clave propia)** (`server/proxy_server.py`, `src/ai/providers/proxy_provider.py`):
+    - Flask app que guarda `GROQ_API_KEY` server-side (nunca expuesta al cliente)
+    - Rate limiting por IP: ventana deslizante en memoria, 10 peticiones/hora por defecto (`RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_S`)
+    - Token de acceso opcional (`PROXY_ACCESS_TOKEN`) para restringir quién usa el proxy
+    - Endpoint `/health` para verificar estado y configuración
+    - `ProxyProvider`: cliente que habla con el servidor, maneja 429 (rate limit) y errores de conexión con mensajes claros
+    - `LLM_PROVIDER=proxy` + `PROXY_URL=...` en `.env`
+    - `setup_llm.py` opción 3: configura el proxy interactivamente
+    - `server/README.md`: guía de deploy en Render (free tier) con advertencia explícita de responsabilidad del operador
+    - `tests/test_proxy_provider.py` (14 tests): cliente, servidor Flask vía test_client, rate limiting, token inválido
+
+    **Decisión de diseño:** se evaluó embeber una clave compartida en el repo público y se descartó — una sola clave compartida entre todos los clones de GitHub viola los TOS de Groq, es extraíble del historial de git, y cualquier abuso la revoca para todos. El proxy resuelve esto moviendo la clave a un servidor que el operador controla y limita, sin exponerla nunca al cliente.
+
 ## Siguientes etapas
 1. Fase 3: Tests y CI multiproveedor.
 2. Fase 4: UI mejorada con selector de proveedor.

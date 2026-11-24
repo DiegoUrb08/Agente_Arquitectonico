@@ -5,6 +5,7 @@ from .base import LLMProvider
 from .groq_provider import GroqProvider
 from .ollama_provider import OllamaProvider
 from .mock_provider import MockProvider
+from .proxy_provider import ProxyProvider
 
 
 def get_provider(provider_name: str | None = None) -> LLMProvider:
@@ -20,13 +21,18 @@ def get_provider(provider_name: str | None = None) -> LLMProvider:
         return GroqProvider()
     elif provider_name == "ollama":
         return OllamaProvider()
+    elif provider_name == "proxy":
+        return ProxyProvider()
     elif provider_name == "mock":
         return MockProvider()
     else:
         raise ValueError(
             f"Proveedor LLM desconocido: {provider_name}. "
-            f"Opciones: groq, ollama, mock"
+            f"Opciones: groq, ollama, proxy, mock"
         )
 
 
-__all__ = ["LLMProvider", "GroqProvider", "OllamaProvider", "MockProvider", "get_provider"]
+__all__ = [
+    "LLMProvider", "GroqProvider", "OllamaProvider", "ProxyProvider",
+    "MockProvider", "get_provider",
+]
