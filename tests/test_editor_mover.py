@@ -67,9 +67,15 @@ def test_mover_arriba_de_deja_los_ambientes_pegados(dxf, tmp_path):
     assert dorm.intersection(sala.buffer(1e-6)).length > 0.5  # comparten arista
 
     # Las etiquetas se movieron con el ambiente.
+    def _xdata_id(entidad):
+        try:
+            return entidad.get_xdata("AGENTE_ARQ")[0].value
+        except Exception:
+            return None
+
     etiquetas = [
         t for t in doc.modelspace().query("TEXT")
-        if t.get_xdata("AGENTE_ARQ")[0].value == "dormitorio_1"
+        if _xdata_id(t) == "dormitorio_1"
     ]
     assert len(etiquetas) == 2
     for t in etiquetas:

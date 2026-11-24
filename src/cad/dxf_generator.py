@@ -169,6 +169,155 @@ def dibujar_geometria(
 
 
 # ==========================================
+# COTAS
+# ==========================================
+
+_TICK = 0.14   # tamaño de los ticks de los extremos de la cota
+
+
+def _tick_extremo(msp, px, py, angulo_grad, capa):
+    """Dibuja el tick (flecha diagonal) en el extremo de una línea de cota."""
+    import math
+    rad = math.radians(angulo_grad)
+    dx = _TICK * math.cos(rad)
+    dy = _TICK * math.sin(rad)
+    msp.add_line((px, py), (px + dx, py + dy), dxfattribs={"layer": capa})
+    msp.add_line((px, py), (px - dx, py - dy), dxfattribs={"layer": capa})
+
+
+def dibujar_cotas(msp, ancho, largo, y_offset=0):
+    """
+    Anota las dimensiones del terreno junto al plano.
+
+    Dibuja una cota horizontal (ancho) debajo del terreno y una cota
+    vertical (largo) a la derecha.
+    """
+    capa = "TEXTOS"
+    ext = 0.30   # extensión de la línea de proyección más allá de la cota
+    sep = 0.80   # separación de la línea de cota al borde del terreno
+
+    # ---- Cota horizontal (ancho) ----
+    y_cota = y_offset - sep
+
+    msp.add_line((0, y_offset), (0, y_cota - ext), dxfattribs={"layer": capa})
+    msp.add_line((ancho, y_offset), (ancho, y_cota - ext), dxfattribs={"layer": capa})
+    msp.add_line((0, y_cota), (ancho, y_cota), dxfattribs={"layer": capa})
+    _tick_extremo(msp, 0, y_cota, 45, capa)
+    _tick_extremo(msp, ancho, y_cota, 45, capa)
+
+    texto_h = msp.add_text(
+        f"{ancho:.2f} m",
+        dxfattribs={"layer": capa, "height": 0.25},
+    )
+    texto_h.set_placement(
+        (ancho / 2, y_cota + 0.08),
+        align=TextEntityAlignment.BOTTOM_CENTER,
+    )
+
+    # ---- Cota vertical (largo) ----
+    x_cota = ancho + sep
+
+    msp.add_line((ancho, y_offset), (x_cota + ext, y_offset), dxfattribs={"layer": capa})
+    msp.add_line((ancho, y_offset + largo), (x_cota + ext, y_offset + largo), dxfattribs={"layer": capa})
+    msp.add_line((x_cota, y_offset), (x_cota, y_offset + largo), dxfattribs={"layer": capa})
+    _tick_extremo(msp, x_cota, y_offset, 135, capa)
+    _tick_extremo(msp, x_cota, y_offset + largo, 135, capa)
+
+    texto_v = msp.add_text(
+        f"{largo:.2f} m",
+        dxfattribs={"layer": capa, "height": 0.25, "rotation": 90},
+    )
+    texto_v.set_placement(
+        (x_cota + 0.08, y_offset + largo / 2),
+        align=TextEntityAlignment.BOTTOM_CENTER,
+    )
+
+
+# ==========================================
+# CUADRO DE ÁREAS
+# ==========================================
+
+_COL_NOMBRE = 3.8
+_COL_AREA = 1.6
+_COL_DIMS = 2.4
+_ROW_H = 0.55
+
+
+def dibujar_cuadro_areas(msp, ambientes, x_inicio, y_inicio):
+    """
+    Dibuja un cuadro de áreas a la derecha del plano.
+
+    `ambientes`: lista de dicts con al menos {nombre, poligono} y
+    opcionalmente {area_m2}.
+    `(x_inicio, y_inicio)`: esquina superior izquierda del cuadro.
+    """
+    capa = "TEXTOS"
+    total_w = _COL_NOMBRE + _COL_AREA + _COL_DIMS
+    n_filas = len(ambientes) + 3   # título + cabeceras + datos + total
+    total_h = n_filas * _ROW_H
+
+    # Borde exterior
+    msp.add_lwpolyline(
+        [
+            (x_inicio, y_inicio - total_h),
+            (x_inicio + total_w, y_inicio - total_h),
+            (x_inicio + total_w, y_inicio),
+            (x_inicio, y_inicio),
+        ],
+        close=True,
+        dxfattribs={"layer": capa},
+    )
+
+    y = y_inicio
+
+    # --- Fila de título ---
+    dibujar_texto_centrado(msp, "CUADRO DE ÁREAS", x_inicio + total_w / 2, y - _ROW_H / 2, 0.22, capa)
+    y -= _ROW_H
+    msp.add_line((x_inicio, y), (x_inicio + total_w, y), dxfattribs={"layer": capa})
+
+    # --- Cabeceras de columna ---
+    _celda_texto(msp, "AMBIENTE", x_inicio, y, _COL_NOMBRE, _ROW_H, 0.20, capa)
+    _celda_texto(msp, "M²", x_inicio + _COL_NOMBRE, y, _COL_AREA, _ROW_H, 0.20, capa)
+    _celda_texto(msp, "DIM. (m)", x_inicio + _COL_NOMBRE + _COL_AREA, y, _COL_DIMS, _ROW_H, 0.20, capa)
+    y -= _ROW_H
+    msp.add_line((x_inicio, y), (x_inicio + total_w, y), dxfattribs={"layer": capa})
+
+    # Separadores de columna (tramo cabeceras)
+    for xsep in (x_inicio + _COL_NOMBRE, x_inicio + _COL_NOMBRE + _COL_AREA):
+        msp.add_line((xsep, y_inicio - _ROW_H), (xsep, y_inicio - 2 * _ROW_H), dxfattribs={"layer": capa})
+
+    # --- Filas de datos ---
+    total_area = 0.0
+    for amb in sorted(ambientes, key=lambda a: a["nombre"]):
+        area = amb.get("area_m2", amb["poligono"].area)
+        total_area += area
+        xmin, ymin, xmax, ymax = amb["poligono"].bounds
+        dims = f"{(xmax - xmin):.1f}×{(ymax - ymin):.1f}"   # × unicode
+
+        _celda_texto(msp, amb["nombre"][:22], x_inicio, y, _COL_NOMBRE, _ROW_H, 0.18, capa, alinear="izquierda")
+        _celda_texto(msp, f"{area:.2f}", x_inicio + _COL_NOMBRE, y, _COL_AREA, _ROW_H, 0.18, capa)
+        _celda_texto(msp, dims, x_inicio + _COL_NOMBRE + _COL_AREA, y, _COL_DIMS, _ROW_H, 0.18, capa)
+        y -= _ROW_H
+
+    # --- Fila de total ---
+    msp.add_line((x_inicio, y), (x_inicio + total_w, y), dxfattribs={"layer": capa})
+    _celda_texto(msp, "TOTAL", x_inicio, y, _COL_NOMBRE, _ROW_H, 0.20, capa)
+    _celda_texto(msp, f"{total_area:.2f}", x_inicio + _COL_NOMBRE, y, _COL_AREA, _ROW_H, 0.20, capa)
+
+    # Separadores de columna (tramo datos + total)
+    for xsep in (x_inicio + _COL_NOMBRE, x_inicio + _COL_NOMBRE + _COL_AREA):
+        msp.add_line((xsep, y_inicio - 2 * _ROW_H), (xsep, y), dxfattribs={"layer": capa})
+
+
+def _celda_texto(msp, contenido, x_col, y_fila, ancho_col, alto_fila, altura_texto, capa, alinear="centro"):
+    if alinear == "izquierda":
+        texto = msp.add_text(str(contenido), dxfattribs={"layer": capa, "height": altura_texto})
+        texto.set_placement((x_col + 0.12, y_fila - alto_fila / 2), align=TextEntityAlignment.MIDDLE_LEFT)
+    else:
+        dibujar_texto_centrado(msp, contenido, x_col + ancho_col / 2, y_fila - alto_fila / 2, altura_texto, capa)
+
+
+# ==========================================
 # ESCALERA
 # ==========================================
 
@@ -617,6 +766,20 @@ def generar_dxf_desde_geometrias(
     )
 
     # --------------------------------------
+    # COTAS Y CUADRO DE ÁREAS
+    # --------------------------------------
+
+    dibujar_cotas(msp, ancho_terreno_m, largo_terreno_m)
+
+    x_cuadro = ancho_terreno_m + 2.0
+    dibujar_cuadro_areas(
+        msp,
+        resultado_geometrias["ambientes"],
+        x_cuadro,
+        largo_terreno_m,
+    )
+
+    # --------------------------------------
     # GUARDAR ARCHIVO
     # --------------------------------------
 
@@ -710,6 +873,9 @@ def _dibujar_piso(
     if mob_shifted is not None:
         dibujar_mobiliario(msp, mob_shifted)
 
+    # Cotas del terreno de este piso
+    dibujar_cotas(msp, ancho_m, largo_m, y_offset)
+
 
 def generar_dxf_multipisos(
     pisos,
@@ -740,6 +906,8 @@ def generar_dxf_multipisos(
 
     paso = largo_terreno_m + SEPARACION_PISOS_M
 
+    todos_ambientes = []
+
     for i, datos in enumerate(pisos):
         y_offset = i * paso
         label = (etiquetas or ETIQUETAS_DEFAULT + [f"PISO {n + 3}" for n in range(len(pisos))])[i]
@@ -767,6 +935,20 @@ def generar_dxf_multipisos(
             y_offset,
             label,
         )
+
+        for amb in geometrias["ambientes"]:
+            todos_ambientes.append(
+                {**amb, "poligono": shapely_translate(amb["poligono"], yoff=y_offset)}
+            )
+
+    # Cuadro de áreas agregado de todos los pisos
+    alto_total = (len(pisos) - 1) * paso + largo_terreno_m
+    dibujar_cuadro_areas(
+        msp,
+        todos_ambientes,
+        ancho_terreno_m + 2.0,
+        alto_total,
+    )
 
     archivo = Path(ruta_salida)
     archivo.parent.mkdir(parents=True, exist_ok=True)

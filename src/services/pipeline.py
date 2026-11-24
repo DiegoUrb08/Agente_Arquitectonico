@@ -322,3 +322,59 @@ def editar_plano(
         "observaciones": observaciones,
         "plano": plano,
     }
+
+
+# ==========================================
+# EXPORTACIÓN CSV DEL CUADRO DE ÁREAS
+# ==========================================
+
+def _filas_areas(resultado) -> list[dict]:
+    """Extrae las filas del cuadro de áreas de un ResultadoPlano o ResultadoPlanoMultipisos."""
+    if isinstance(resultado, ResultadoPlanoMultipisos):
+        filas = []
+        for i, plano in enumerate(resultado.pisos):
+            label = f"PLANTA BAJA" if i == 0 else f"PLANTA ALTA {i}"
+            for amb in plano.geometrias["ambientes"]:
+                xmin, ymin, xmax, ymax = amb["poligono"].bounds
+                filas.append({
+                    "piso": label,
+                    "ambiente": amb["nombre"],
+                    "area_m2": round(amb.get("area_m2", amb["poligono"].area), 2),
+                    "ancho_m": round(xmax - xmin, 2),
+                    "largo_m": round(ymax - ymin, 2),
+                })
+        return filas
+    # ResultadoPlano
+    filas = []
+    for amb in resultado.geometrias["ambientes"]:
+        xmin, ymin, xmax, ymax = amb["poligono"].bounds
+        filas.append({
+            "piso": "PLANTA ÚNICA",
+            "ambiente": amb["nombre"],
+            "area_m2": round(amb.get("area_m2", amb["poligono"].area), 2),
+            "ancho_m": round(xmax - xmin, 2),
+            "largo_m": round(ymax - ymin, 2),
+        })
+    return filas
+
+
+def generar_csv_areas(resultado) -> str:
+    """Devuelve el cuadro de áreas como texto CSV (separado por comas)."""
+    import csv
+    import io
+
+    campos = ["piso", "ambiente", "area_m2", "ancho_m", "largo_m"]
+    filas = _filas_areas(resultado)
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=campos)
+    writer.writeheader()
+    writer.writerows(filas)
+    return buf.getvalue()
+
+
+def exportar_csv_areas(resultado, ruta_csv) -> Path:
+    """Escribe el cuadro de áreas en un archivo CSV y devuelve su Path."""
+    ruta = Path(ruta_csv)
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_text(generar_csv_areas(resultado), encoding="utf-8")
+    return ruta

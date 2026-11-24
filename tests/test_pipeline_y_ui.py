@@ -13,6 +13,8 @@ from src.services.pipeline import (
     generar_plano,
     generar_plano_multipisos,
     ResultadoPlanoMultipisos,
+    generar_csv_areas,
+    exportar_csv_areas,
 )
 from src.planning.layout_optimizer import optimizar_por_pisos
 from src.utils.texto import normalizar_nombre
@@ -195,6 +197,55 @@ def test_escalera_peldanos_dibujados_en_dxf(tmp_path):
     # La escalera debe tener al menos 3 líneas de peldaños horizontales.
     lineas = [e for e in msp if e.dxftype() == "LINE" and e.dxf.layer == "AMBIENTES"]
     assert len(lineas) >= 3
+
+
+def test_dxf_monopiso_contiene_cotas(tmp_path):
+    """El DXF de un plano simple debe tener líneas en la capa TEXTOS (cotas)."""
+    import ezdxf
+    r = generar_plano(_requerimientos(), tmp_path / "cotas.dxf")
+    doc = ezdxf.readfile(str(r.ruta_dxf))
+    msp = doc.modelspace()
+    lineas_textos = [e for e in msp if e.dxftype() == "LINE" and e.dxf.layer == "TEXTOS"]
+    assert len(lineas_textos) >= 4   # 2 extensiones + 1 cota h + 1 cota v como mínimo
+
+
+def test_dxf_monopiso_contiene_cuadro_areas(tmp_path):
+    """El DXF debe tener texto 'CUADRO DE ÁREAS' en la capa TEXTOS."""
+    import ezdxf
+    r = generar_plano(_requerimientos(), tmp_path / "cuadro.dxf")
+    doc = ezdxf.readfile(str(r.ruta_dxf))
+    msp = doc.modelspace()
+    textos = [e.dxf.text for e in msp if e.dxftype() == "TEXT"]
+    assert any("CUADRO" in t.upper() for t in textos)
+    assert any("TOTAL" in t.upper() for t in textos)
+
+
+def test_csv_areas_monopiso(tmp_path):
+    """generar_csv_areas produce CSV con cabecera y una fila por ambiente."""
+    r = generar_plano(_requerimientos(), tmp_path / "p.dxf")
+    csv_text = generar_csv_areas(r)
+    lineas = csv_text.strip().splitlines()
+    assert lineas[0] == "piso,ambiente,area_m2,ancho_m,largo_m"
+    assert len(lineas) == 5   # cabecera + 4 ambientes
+
+
+def test_csv_areas_multipisos(tmp_path):
+    """generar_csv_areas para multipiso incluye columna piso con dos valores distintos."""
+    r = generar_plano_multipisos(_requerimientos_dos_pisos(), 10, 20, tmp_path / "mp.dxf")
+    csv_text = generar_csv_areas(r)
+    lineas = csv_text.strip().splitlines()
+    pisos_col = {l.split(",")[0] for l in lineas[1:]}
+    assert "PLANTA BAJA" in pisos_col
+    assert any("ALTA" in p for p in pisos_col)
+
+
+def test_exportar_csv_areas_escribe_archivo(tmp_path):
+    r = generar_plano(_requerimientos(), tmp_path / "p.dxf")
+    ruta_csv = exportar_csv_areas(r, tmp_path / "areas.csv")
+    assert ruta_csv.exists()
+    contenido = ruta_csv.read_text(encoding="utf-8")
+    assert "piso" in contenido
+    assert "area_m2" in contenido
 
 
 def test_la_interfaz_arranca_sin_excepciones():
