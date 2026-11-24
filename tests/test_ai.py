@@ -139,6 +139,56 @@ def test_consultar_modelo_devuelve_mensaje_de_error(monkeypatch):
     assert "Error al comunicarse" in ollama_client.consultar_modelo("hola")
 
 
+# ---------------- fallback regex terreno ----------------
+
+def _sin_terreno(monkeypatch, prompt):
+    """Mock que devuelve terreno nulo para forzar el fallback."""
+    datos = {
+        "tipo_proyecto": "vivienda",
+        "ambientes": [{"nombre": "sala", "cantidad": 1}],
+    }
+    monkeypatch.setattr(interpreter, "chat_con_reintentos", lambda **kw: _respuesta(datos))
+    return interpreter.interpretar_instruccion(prompt)
+
+
+def test_fallback_regex_extrae_NxM(monkeypatch):
+    req = _sin_terreno(monkeypatch, "Departamento pequeño de 6 x 10 metros con una sala.")
+    assert {req.ancho_terreno_m, req.largo_terreno_m} == {6.0, 10.0}
+
+
+def test_fallback_regex_extrae_NxM_sin_unidad(monkeypatch):
+    req = _sin_terreno(monkeypatch, "Casa en un terreno de 11x20 m.")
+    assert {req.ancho_terreno_m, req.largo_terreno_m} == {11.0, 20.0}
+
+
+def test_fallback_regex_extrae_ingles(monkeypatch):
+    req = _sin_terreno(monkeypatch, "House on a 10 x 20 meter lot.")
+    assert {req.ancho_terreno_m, req.largo_terreno_m} == {10.0, 20.0}
+
+
+def test_fallback_regex_extrae_area_con_palabra_terreno(monkeypatch):
+    req = _sin_terreno(monkeypatch, "Tengo un terreno de 200 m2.")
+    assert req.area_terreno_m2 == 200.0 or (req.ancho_terreno_m and req.largo_terreno_m)
+
+
+def test_fallback_regex_no_actua_si_llm_ya_dio_terreno(monkeypatch):
+    datos = {
+        "tipo_proyecto": "vivienda",
+        "ancho_terreno_m": 8.0,
+        "largo_terreno_m": 15.0,
+        "ambientes": [{"nombre": "sala", "cantidad": 1}],
+    }
+    monkeypatch.setattr(interpreter, "chat_con_reintentos", lambda **kw: _respuesta(datos))
+    req = interpreter.interpretar_instruccion("Casa de 8x15 con sala.")
+    assert req.ancho_terreno_m == 8.0
+    assert req.largo_terreno_m == 15.0
+
+
+def test_fallback_regex_no_actua_sin_patron(monkeypatch):
+    with pytest.raises(ValueError, match="dimensiones"):
+        _sin_terreno(monkeypatch, "Quiero una casa bonita.")
+
+
 def test_interpretar_edicion_fuera_de_catalogo_da_mensaje_amigable(monkeypatch):
     datos = {"operaciones": [
         {"tipo": "modificar_area", "ambiente": "piscina", "area_objetivo": 0}

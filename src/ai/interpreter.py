@@ -1,5 +1,6 @@
 
 import json
+import re
 
 from src.models.requirements import RequerimientosArquitectonicos
 
@@ -11,6 +12,61 @@ from src.models.defaults import (
 
 from src.ai.errores import mensaje_amigable
 from src.ai.ollama_client import MODEL_NAME, chat_con_reintentos
+
+
+# ============================================================
+# 0. EXTRACCION DE TERRENO POR REGEX (FALLBACK)
+# ============================================================
+
+# Separadores entre las dos dimensiones: "x", "×", "por", "by".
+_SEP = r"(?:[xX×]|por|by)"
+
+# Número entero o decimal (coma o punto como separador).
+_NUM = r"(\d+(?:[.,]\d+)?)"
+
+# Unidades opcionales: m, metros, metro, mts, meter, meters.
+_UNIDAD = r"(?:\s*(?:m(?:etro[s]?|ts?|eter[s]?)?)?)?"
+
+# Patrón principal: "6 x 10 metros", "10x20", "10 by 20 meter lot".
+_RE_DIM = re.compile(
+    rf"{_NUM}\s*{_SEP}\s*{_NUM}{_UNIDAD}",
+    re.IGNORECASE,
+)
+
+# Patrón área: "200 m2", "150 m²", "80 metros cuadrados"
+# Solo se usa cuando no hay patrón NxM y el texto menciona "terreno".
+_RE_AREA = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*(?:m[²2]|metros?\s+cuadrados?)",
+    re.IGNORECASE,
+)
+
+# Dimensión mínima razonable para un terreno (m).
+_MIN_DIM_M = 3.0
+
+
+def _extraer_terreno_por_regex(texto: str) -> dict:
+    """
+    Fallback determinista: busca dimensiones del terreno en el prompt
+    cuando el modelo devolvió ancho/largo/area_terreno todos nulos.
+
+    Devuelve un dict con las claves que pudo extraer (puede ser vacío).
+    """
+    texto_n = texto.replace(",", ".")
+
+    # 1. Buscar patrón NxM (prioridad sobre área sola).
+    for m in _RE_DIM.finditer(texto_n):
+        a, b = float(m.group(1)), float(m.group(2))
+        if a >= _MIN_DIM_M and b >= _MIN_DIM_M:
+            return {"ancho_terreno_m": a, "largo_terreno_m": b}
+
+    # 2. Área total del terreno (solo si aparece la palabra "terreno").
+    texto_lower = texto_n.lower()
+    if "terreno" in texto_lower or "lote" in texto_lower or "lot" in texto_lower:
+        m = _RE_AREA.search(texto_n)
+        if m:
+            return {"area_terreno_m2": float(m.group(1))}
+
+    return {}
 
 
 # ============================================================
@@ -173,6 +229,16 @@ No agregues explicaciones antes ni despues.
         raise ValueError(
             mensaje_amigable(error, "los requerimientos")
         ) from error
+
+    # --------------------------------------------------------
+    # 1.5 FALLBACK: EXTRAER TERRENO POR REGEX SI EL MODELO LO OMITIÓ
+    # --------------------------------------------------------
+
+    if (requerimientos.ancho_terreno_m is None
+            and requerimientos.largo_terreno_m is None
+            and requerimientos.area_terreno_m2 is None):
+        for clave, valor in _extraer_terreno_por_regex(instruccion).items():
+            setattr(requerimientos, clave, valor)
 
     # --------------------------------------------------------
     # 2. COMPLETAR DIMENSIONES DEL TERRENO

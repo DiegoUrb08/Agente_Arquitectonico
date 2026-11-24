@@ -89,6 +89,6 @@
 
 ## Siguientes etapas
 1. **[Corrección]** Lista blanca de ambientes soportados: rechazar tipos fuera de catálogo con mensaje amigable antes de llegar al optimizador.
-2. **[Corrección]** Segunda pasada de extracción del terreno si llega nulo pero el prompt contiene dimensiones.
+2. ~~**[Corrección]** Segunda pasada de extracción del terreno si llega nulo pero el prompt contiene dimensiones.~~ **Implementado:** fallback regex (`_extraer_terreno_por_regex`) en `interpreter.py`; se activa solo cuando el LLM devuelve ancho/largo/area_terreno todos nulos. Resuelve los 3 casos fallidos del benchmark (`minimo`, `habitantes`, `ingles_mezclado`).
 3. **[Corrección]** Registrar reintentos y tiempos parciales del intérprete para diagnosticar casos lentos.
 4. Más ampliaciones (más tipos de ambiente en las plantillas, varios pisos) y, después, BIM.
