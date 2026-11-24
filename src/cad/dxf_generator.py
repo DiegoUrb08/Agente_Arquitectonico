@@ -2,6 +2,7 @@ from pathlib import Path
 
 import ezdxf
 from ezdxf.enums import TextEntityAlignment
+from shapely.affinity import translate as shapely_translate
 from shapely.geometry import box as shapely_box
 from shapely.geometry import (
     Polygon,
@@ -590,5 +591,145 @@ def generar_dxf_desde_geometrias(
 
     doc.saveas(str(archivo))
 
+    return str(archivo)
+
+
+# ==========================================
+# GENERADOR MULTI-PISO
+# ==========================================
+
+SEPARACION_PISOS_M = 3.0
+ETIQUETAS_DEFAULT = ["PLANTA BAJA", "PLANTA ALTA"]
+
+
+def _desplazar_mobiliario(resultado_mobiliario, y_offset):
+    """Crea una copia del resultado de mobiliario con coordenadas desplazadas."""
+    if resultado_mobiliario is None:
+        return None
+    muebles = [
+        {
+            **m,
+            "y": m["y"] + y_offset,
+            "geometria": shapely_translate(m["geometria"], yoff=y_offset),
+        }
+        for m in resultado_mobiliario["mobiliario"]
+    ]
+    return {**resultado_mobiliario, "mobiliario": muebles}
+
+
+def _dibujar_piso(
+    msp,
+    geometrias,
+    geometria_muros,
+    resultado_aberturas,
+    resultado_mobiliario,
+    ancho_m,
+    largo_m,
+    y_offset,
+    label,
+):
+    """Dibuja un piso completo en el model space con un desplazamiento vertical."""
+
+    # Terreno
+    msp.add_lwpolyline(
+        [(0, y_offset), (ancho_m, y_offset), (ancho_m, y_offset + largo_m), (0, y_offset + largo_m)],
+        close=True,
+        dxfattribs={"layer": "TERRENO"},
+    )
+
+    # Etiqueta del piso (encima del terreno)
+    if label:
+        dibujar_texto_centrado(msp, label, ancho_m / 2, y_offset + largo_m + 0.5, 0.5)
+
+    # Mobiliario desplazado (para usar en etiquetas y en dibujo)
+    mob_shifted = _desplazar_mobiliario(resultado_mobiliario, y_offset)
+
+    # Ambientes
+    for ambiente in geometrias["ambientes"]:
+        poly_shifted = shapely_translate(ambiente["poligono"], yoff=y_offset)
+        puntos = list(poly_shifted.exterior.coords)[:-1]
+        entidad = msp.add_lwpolyline(puntos, close=True, dxfattribs={"layer": "AMBIENTES"})
+        registrar_metadatos(entidad, ambiente["id"], ambiente["nombre"])
+        ambiente_shifted = {**ambiente, "poligono": poly_shifted}
+        dibujar_etiqueta_ambiente(msp, ambiente_shifted, mob_shifted)
+
+    # Muros
+    if geometria_muros is not None:
+        dibujar_geometria(msp, shapely_translate(geometria_muros, yoff=y_offset), "MUROS")
+
+    # Puertas y ventanas
+    if resultado_aberturas is not None:
+        for puerta in resultado_aberturas["puertas"]:
+            cx, cy = puerta["centro"]
+            dibujar_puerta(msp, {**puerta, "centro": (cx, cy + y_offset)})
+        for ventana in resultado_aberturas["ventanas"]:
+            cx, cy = ventana["centro"]
+            dibujar_ventana(msp, {**ventana, "centro": (cx, cy + y_offset)})
+
+    # Mobiliario
+    if mob_shifted is not None:
+        dibujar_mobiliario(msp, mob_shifted)
+
+
+def generar_dxf_multipisos(
+    pisos,
+    ancho_terreno_m,
+    largo_terreno_m,
+    ruta_salida,
+    etiquetas=None,
+):
+    """
+    Genera un DXF con varios pisos apilados verticalmente.
+
+    `pisos` es una lista de dicts con las claves:
+        geometrias, resultado_muros, resultado_aberturas, resultado_mobiliario
+    Cada piso se dibuja con un desplazamiento en Y de
+    (largo_terreno_m + SEPARACION_PISOS_M) por número de piso.
+    """
+
+    doc = ezdxf.new("R2010")
+    doc.header["$INSUNITS"] = UNIDADES_METROS
+    doc.header["$MEASUREMENT"] = 1
+    doc.header["$LWDISPLAY"] = 1
+
+    if not doc.appids.has_entry(APP_ID):
+        doc.appids.new(APP_ID)
+
+    crear_capas(doc)
+    msp = doc.modelspace()
+
+    paso = largo_terreno_m + SEPARACION_PISOS_M
+
+    for i, datos in enumerate(pisos):
+        y_offset = i * paso
+        label = (etiquetas or ETIQUETAS_DEFAULT + [f"PISO {n + 3}" for n in range(len(pisos))])[i]
+
+        geometrias = datos["geometrias"]
+        resultado_aberturas = datos.get("resultado_aberturas")
+        resultado_muros = datos.get("resultado_muros")
+        resultado_mobiliario = datos.get("resultado_mobiliario")
+
+        if resultado_aberturas is not None:
+            geometria_muros = resultado_aberturas["muros_con_aberturas"]
+        elif resultado_muros is not None:
+            geometria_muros = resultado_muros["todos_los_muros"]
+        else:
+            geometria_muros = None
+
+        _dibujar_piso(
+            msp,
+            geometrias,
+            geometria_muros,
+            resultado_aberturas,
+            resultado_mobiliario,
+            ancho_terreno_m,
+            largo_terreno_m,
+            y_offset,
+            label,
+        )
+
+    archivo = Path(ruta_salida)
+    archivo.parent.mkdir(parents=True, exist_ok=True)
+    doc.saveas(str(archivo))
     return str(archivo)
 

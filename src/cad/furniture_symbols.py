@@ -310,3 +310,76 @@ def dibujar_ducha(msp, x, y, ancho, largo):
         (x, y + largo),
         dxfattribs={"layer": "MOBILIARIO"}
     )
+
+
+def dibujar_lavadora(msp, x, y, ancho, largo):
+    """Dibuja una lavadora en vista superior."""
+
+    msp.add_lwpolyline(
+        [(x, y), (x + ancho, y), (x + ancho, y + largo), (x, y + largo)],
+        close=True,
+        dxfattribs={"layer": "MOBILIARIO"},
+    )
+
+    radio = min(ancho, largo) * 0.32
+    msp.add_circle(
+        (x + ancho / 2, y + largo / 2),
+        radio,
+        dxfattribs={"layer": "MOBILIARIO"},
+    )
+
+    msp.add_circle(
+        (x + ancho / 2, y + largo / 2),
+        radio * 0.45,
+        dxfattribs={"layer": "MOBILIARIO"},
+    )
+
+
+def dibujar_secadora(msp, x, y, ancho, largo):
+    """Dibuja una secadora en vista superior (igual que lavadora)."""
+
+    msp.add_lwpolyline(
+        [(x, y), (x + ancho, y), (x + ancho, y + largo), (x, y + largo)],
+        close=True,
+        dxfattribs={"layer": "MOBILIARIO"},
+    )
+
+    radio = min(ancho, largo) * 0.32
+    msp.add_circle(
+        (x + ancho / 2, y + largo / 2),
+        radio,
+        dxfattribs={"layer": "MOBILIARIO"},
+    )
+
+    # Rejilla de ventilación: tres líneas horizontales.
+    for i in range(1, 4):
+        yy = y + largo * (0.15 + i * 0.18)
+        msp.add_line(
+            (x + ancho * 0.15, yy),
+            (x + ancho * 0.85, yy),
+            dxfattribs={"layer": "MOBILIARIO"},
+        )
+
+
+def dibujar_tina(msp, x, y, ancho, largo):
+    """Dibuja una bañera en vista superior."""
+
+    msp.add_lwpolyline(
+        [(x, y), (x + ancho, y), (x + ancho, y + largo), (x, y + largo)],
+        close=True,
+        dxfattribs={"layer": "MOBILIARIO"},
+    )
+
+    msp.add_ellipse(
+        center=(x + ancho / 2, y + largo * 0.45),
+        major_axis=(ancho * 0.38, 0),
+        ratio=0.65,
+        dxfattribs={"layer": "MOBILIARIO"},
+    )
+
+    # Grifo en la cabecera.
+    msp.add_circle(
+        (x + ancho / 2, y + largo * 0.88),
+        min(ancho, largo) * 0.045,
+        dxfattribs={"layer": "MOBILIARIO"},
+    )

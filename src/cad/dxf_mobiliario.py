@@ -11,6 +11,9 @@ from src.cad.furniture_symbols import (
     dibujar_lavatorio,
     dibujar_inodoro,
     dibujar_ducha,
+    dibujar_lavadora,
+    dibujar_secadora,
+    dibujar_tina,
 )
 from src.cad.dxf_base import registrar_metadatos
 
@@ -487,6 +490,9 @@ def dibujar_mobiliario(
         "lavatorio": dibujar_lavatorio,
         "inodoro": dibujar_inodoro,
         "ducha": dibujar_ducha,
+        "lavadora": dibujar_lavadora,
+        "secadora": dibujar_secadora,
+        "tina": dibujar_tina,
     }
 
     doc = msp.doc

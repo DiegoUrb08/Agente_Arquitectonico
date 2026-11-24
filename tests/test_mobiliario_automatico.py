@@ -67,6 +67,46 @@ def test_pipeline_sin_amueblar(tmp_path):
     assert r.mobiliario is None
 
 
+def test_lavanderia_recibe_lavadora_y_secadora():
+    geo = generar_geometrias(
+        [{"id": "lavanderia_1", "nombre": "Lavanderia", "x": 0, "y": 0, "ancho": 3, "largo": 3}],
+        10, 10,
+    )
+    r = amueblar_automaticamente(geo)
+    tipos = [m["tipo"] for m in r["mobiliario"]]
+    assert "lavadora" in tipos
+    assert "secadora" in tipos
+
+
+def test_terraza_recibe_mesa_comedor():
+    geo = generar_geometrias(
+        [{"id": "terraza_1", "nombre": "Terraza", "x": 0, "y": 0, "ancho": 4, "largo": 4}],
+        10, 10,
+    )
+    r = amueblar_automaticamente(geo)
+    tipos = [m["tipo"] for m in r["mobiliario"]]
+    assert "mesa_comedor" in tipos
+
+
+def test_dormitorio_principal_recibe_cama_queen():
+    geo = generar_geometrias(
+        [{"id": "dormitorio principal_1", "nombre": "Dormitorio Principal",
+          "x": 0, "y": 0, "ancho": 5, "largo": 4}],
+        10, 10,
+    )
+    r = amueblar_automaticamente(geo)
+    tipos = [m["tipo"] for m in r["mobiliario"]]
+    assert "cama_queen" in tipos
+    assert "armario" in tipos
+
+
+def test_nuevos_tipos_mobiliario_tienen_dimensiones():
+    from src.geometry.furniture_generator import obtener_dimensiones
+    for tipo in ("lavadora", "secadora", "tina"):
+        ancho, largo = obtener_dimensiones(tipo)
+        assert ancho > 0 and largo > 0
+
+
 def test_ruido_de_coma_flotante_no_elimina_el_muro_compartido(tmp_path):
     # Caso real: 11.4 + 3.7 = 15.100000000000001 dejaba la puerta sin muro.
     dist = [

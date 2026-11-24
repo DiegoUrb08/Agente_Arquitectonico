@@ -17,9 +17,12 @@ PLANTILLAS = {
     "comedor": [{"tipo": "mesa_comedor", "centrado": True}],
     "cocina": [{"tipo": "cocina"}, {"tipo": "refrigeradora"}],
     "dormitorio": [{"tipo": "cama_matrimonial"}, {"tipo": "armario"}],
+    "dormitorio principal": [{"tipo": "cama_queen"}, {"tipo": "armario"}],
     "bano": [{"tipo": "inodoro"}, {"tipo": "lavatorio"}, {"tipo": "ducha"}],
     "estudio": [{"tipo": "escritorio"}],
     "oficina": [{"tipo": "escritorio"}],
+    "lavanderia": [{"tipo": "lavadora"}, {"tipo": "secadora"}],
+    "terraza": [{"tipo": "mesa_comedor", "centrado": True}],
 }
 
 

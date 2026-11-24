@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from src.cad.dxf_generator import generar_dxf_desde_geometrias
+from src.cad.dxf_generator import generar_dxf_desde_geometrias, generar_dxf_multipisos
 from src.geometry.adjacency_validator import validar_distribucion
 from src.geometry.door_generator import generar_puertas_automaticas
 from src.geometry.geometry_generator import generar_geometrias
@@ -18,7 +18,7 @@ from src.geometry.opening_generator import generar_aberturas
 from src.geometry.wall_generator import generar_muros
 from src.geometry.window_generator import generar_ventanas_automaticas
 from src.models.distribucion import validar_esquema_distribucion
-from src.planning.layout_optimizer import optimizar_distribucion
+from src.planning.layout_optimizer import optimizar_distribucion, optimizar_por_pisos
 
 ESPESOR_EXTERIOR_M = 0.20
 ESPESOR_INTERIOR_M = 0.15
@@ -36,6 +36,13 @@ class ResultadoPlano:
     ruta_dxf: Path
     mobiliario: dict | None = None
     ventanas: dict | None = None
+
+
+@dataclass
+class ResultadoPlanoMultipisos:
+    pisos: list          # list[ResultadoPlano], one per floor
+    ruta_dxf: Path
+    numero_pisos: int
 
 
 def generar_plano(
@@ -59,6 +66,11 @@ def generar_plano(
 
     if not ancho or not largo:
         raise ValueError("Faltan las dimensiones del terreno.")
+
+    n_pisos = requerimientos.numero_pisos or 1
+    if n_pisos > 1:
+        avisar("Optimizando la distribución por pisos...")
+        return generar_plano_multipisos(requerimientos, ancho, largo, ruta_dxf, progreso)
 
     avisar("Optimizando la distribución espacial...")
     distribucion = optimizar_distribucion(requerimientos)
@@ -153,6 +165,106 @@ def construir_plano(
         ruta_dxf=ruta,
         mobiliario=mobiliario,
         ventanas=ventanas,
+    )
+
+
+def generar_plano_multipisos(
+    requerimientos,
+    ancho,
+    largo,
+    ruta_dxf,
+    progreso: Callable[[str], None] | None = None,
+    amueblar: bool = True,
+) -> ResultadoPlanoMultipisos:
+    """
+    Optimiza cada piso por separado y genera un único DXF con los pisos
+    apilados verticalmente.
+    """
+
+    def avisar(mensaje: str):
+        if progreso:
+            progreso(mensaje)
+
+    distribuciones = optimizar_por_pisos(requerimientos)
+    pisos_resultados = []
+    pisos_datos_dxf = []
+
+    for i, distribucion in enumerate(distribuciones):
+        avisar(f"Construyendo piso {i + 1} de {len(distribuciones)}...")
+
+        validar_esquema_distribucion(distribucion)
+        validacion = validar_distribucion(distribucion)
+        geometrias = generar_geometrias(distribucion, ancho, largo)
+
+        if not geometrias["valido"]:
+            raise ValueError(
+                f"Piso {i + 1}: geometría inválida: " + "; ".join(geometrias["errores"])
+            )
+
+        muros = generar_muros(
+            ambientes_geometricos=geometrias["ambientes"],
+            espesor_exterior_m=ESPESOR_EXTERIOR_M,
+            espesor_interior_m=ESPESOR_INTERIOR_M,
+        )
+
+        puertas = generar_puertas_automaticas(
+            distribucion=distribucion,
+            ancho_puerta_m=ANCHO_PUERTA_M,
+            espesor_muro_m=ESPESOR_INTERIOR_M,
+        )
+
+        ventanas = generar_ventanas_automaticas(
+            geometrias,
+            espesor_muro_m=ESPESOR_EXTERIOR_M,
+            puertas=puertas,
+        )
+
+        aberturas = generar_aberturas(
+            resultado_muros=muros,
+            aberturas=puertas["puertas"] + ventanas["ventanas"],
+        )
+
+        mobiliario = None
+        if amueblar:
+            mobiliario = amueblar_automaticamente(geometrias, puertas)
+
+        pisos_resultados.append(ResultadoPlano(
+            distribucion=distribucion,
+            validacion=validacion,
+            geometrias=geometrias,
+            muros=muros,
+            puertas=puertas,
+            aberturas=aberturas,
+            ruta_dxf=Path(ruta_dxf),
+            mobiliario=mobiliario,
+            ventanas=ventanas,
+        ))
+
+        pisos_datos_dxf.append({
+            "geometrias": geometrias,
+            "resultado_muros": muros,
+            "resultado_aberturas": aberturas,
+            "resultado_mobiliario": mobiliario,
+        })
+
+    avisar("Construyendo el plano DXF multipiso...")
+    ruta = Path(ruta_dxf)
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+
+    generar_dxf_multipisos(
+        pisos=pisos_datos_dxf,
+        ancho_terreno_m=ancho,
+        largo_terreno_m=largo,
+        ruta_salida=str(ruta),
+    )
+
+    for plano in pisos_resultados:
+        plano.ruta_dxf = ruta
+
+    return ResultadoPlanoMultipisos(
+        pisos=pisos_resultados,
+        ruta_dxf=ruta,
+        numero_pisos=len(distribuciones),
     )
 
 

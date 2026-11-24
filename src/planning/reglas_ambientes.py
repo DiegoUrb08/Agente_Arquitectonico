@@ -81,6 +81,18 @@ AMBIENTES_VALIDOS = {
     "pasillo",
     "closet",
     "deposito",
+    "escalera",
+}
+
+# Ambientes que van preferentemente en la planta baja.
+AMBIENTES_PLANTA_BAJA = {
+    "sala", "comedor", "cocina", "lavanderia", "garaje", "cochera",
+    "terraza", "estudio", "oficina", "deposito",
+}
+
+# Ambientes que van preferentemente en pisos superiores.
+AMBIENTES_PLANTA_ALTA = {
+    "dormitorio", "dormitorio principal", "bano", "closet", "pasillo",
 }
 
 
@@ -97,6 +109,7 @@ DIMENSIONES_REFERENCIA = {
     "lavanderia": (20, 20),
     "estudio": (30, 30),
     "terraza": (30, 30),
+    "escalera": (25, 15),
 }
 
 

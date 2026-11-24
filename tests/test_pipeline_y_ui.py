@@ -9,7 +9,12 @@ from src.models.defaults import (
 )
 from src.models.distribucion import validar_esquema_distribucion
 from src.models.requirements import Ambiente, RequerimientosArquitectonicos
-from src.services.pipeline import generar_plano
+from src.services.pipeline import (
+    generar_plano,
+    generar_plano_multipisos,
+    ResultadoPlanoMultipisos,
+)
+from src.planning.layout_optimizer import optimizar_por_pisos
 from src.utils.texto import normalizar_nombre
 
 
@@ -95,6 +100,72 @@ def test_pipeline_sin_dimensiones_de_terreno(tmp_path):
 
 
 # ---------------- UI (Streamlit AppTest, sin Ollama) ----------------
+
+def _requerimientos_dos_pisos():
+    req = RequerimientosArquitectonicos(
+        ancho_terreno_m=10,
+        largo_terreno_m=20,
+        area_total_vivienda_m2=120,
+        numero_pisos=2,
+        ambientes=[
+            Ambiente(nombre="sala"),
+            Ambiente(nombre="cocina"),
+            Ambiente(nombre="dormitorio", cantidad=2),
+            Ambiente(nombre="baño"),
+        ],
+    )
+    return calcular_areas_predeterminadas(req)
+
+
+def test_optimizar_por_pisos_devuelve_dos_distribuciones():
+    req = _requerimientos_dos_pisos()
+    distribuciones = optimizar_por_pisos(req)
+    assert len(distribuciones) == 2
+    # Planta baja: sala + cocina + escalera
+    nombres_baja = {normalizar_nombre(a["nombre"]) for a in distribuciones[0]}
+    assert "sala" in nombres_baja
+    assert "cocina" in nombres_baja
+    assert "escalera" in nombres_baja
+    # Planta alta: dormitorios + baño + escalera
+    nombres_alta = {normalizar_nombre(a["nombre"]) for a in distribuciones[1]}
+    assert "dormitorio" in nombres_alta
+    assert "bano" in nombres_alta
+    assert "escalera" in nombres_alta
+
+
+def test_optimizar_por_pisos_solo_sociales_cae_a_un_piso():
+    req = RequerimientosArquitectonicos(
+        ancho_terreno_m=10,
+        largo_terreno_m=20,
+        area_total_vivienda_m2=80,
+        numero_pisos=2,
+        ambientes=[Ambiente(nombre="sala"), Ambiente(nombre="cocina")],
+    )
+    req = calcular_areas_predeterminadas(req)
+    distribuciones = optimizar_por_pisos(req)
+    assert len(distribuciones) == 1
+
+
+def test_pipeline_multipisos_genera_dxf(tmp_path):
+    req = _requerimientos_dos_pisos()
+    r = generar_plano_multipisos(req, 10, 20, tmp_path / "multipisos.dxf")
+    assert isinstance(r, ResultadoPlanoMultipisos)
+    assert r.ruta_dxf.exists()
+    assert r.numero_pisos == 2
+    assert len(r.pisos) == 2
+
+
+def test_generar_plano_despacha_a_multipisos_si_numero_pisos_es_2(tmp_path):
+    req = _requerimientos_dos_pisos()
+    r = generar_plano(req, tmp_path / "p.dxf")
+    assert isinstance(r, ResultadoPlanoMultipisos)
+    assert r.ruta_dxf.exists()
+
+
+def test_escalera_esta_en_catalogo():
+    from src.planning.reglas_ambientes import AMBIENTES_VALIDOS
+    assert "escalera" in AMBIENTES_VALIDOS
+
 
 def test_la_interfaz_arranca_sin_excepciones():
     from streamlit.testing.v1 import AppTest

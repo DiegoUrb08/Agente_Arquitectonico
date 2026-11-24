@@ -1,6 +1,6 @@
 ﻿# Estado del proyecto – Agente Arquitectónico
 
-Última actualización: 2026-11-24 (tras completar benchmark y 3 correcciones).
+Última actualización: 2026-11-24 (tras ampliaciones funcionales: más mobiliario y pisos múltiples).
 
 ## Entorno y herramientas
 - `.venv` funcional: Python 3.14.7, streamlit 1.67, ollama 0.6.3, ortools 9.15, shapely 2.2, ezdxf 1.4.5, pydantic 2.14, pytest 9.2.
@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **101 pruebas pytest, todas pasan** (~13 s): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo y arranque de la UI con `streamlit.testing.AppTest`.
+- **110 pruebas pytest, todas pasan** (~21 s): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -91,5 +91,10 @@
 2. ~~**Extracción del terreno**~~ **Implementado:** fallback regex (`_extraer_terreno_por_regex`) en `interpreter.py`; se activa solo cuando el LLM devuelve ancho/largo/area_terreno todos nulos. Busca patrones `NxM` ("6 x 10 metros") y área ("200 m2"). Resuelve los 3 casos fallidos del benchmark (`minimo`, `habitantes`, `ingles_mezclado`).
 3. ~~**Reintentos y tiempos**~~ **Implementado:** `chat_con_reintentos` acepta `historial: list` opcional; apenda `{intento, tiempo_s, ok, error}` por cada llamada. `interpretar_instruccion` pasa el historial y, si hubo más de un intento, añade `"[LLM] N intentos: Xs + Ys"` a `requerimientos.observaciones`. El benchmark imprime esta nota en la línea de cada caso.
 
+## Ampliaciones funcionales implementadas
+12. **Más plantillas de mobiliario** (`furniture_generator.py`, `furniture_symbols.py`, `dxf_mobiliario.py`, `mobiliario_automatico.py`): tres nuevos tipos (`lavadora` 0,60×0,65 m, `secadora` 0,60×0,65 m, `tina` 1,70×0,75 m) con símbolo DXF propio. Nuevas plantillas en `PLANTILLAS`: `"lavanderia"` → lavadora + secadora; `"terraza"` → mesa_comedor centrada; `"dormitorio principal"` → cama_queen + armario.
+
+13. **Pisos múltiples** (`reglas_ambientes.py`, `layout_optimizer.py`, `dxf_generator.py`, `pipeline.py`): `escalera` añadida al catálogo (`AMBIENTES_VALIDOS`, `DIMENSIONES_REFERENCIA`); nuevos conjuntos `AMBIENTES_PLANTA_BAJA` y `AMBIENTES_PLANTA_ALTA`; `optimizar_por_pisos(req)` divide ambientes por zona, añade escalera a cada piso y los optimiza independientemente; `generar_dxf_multipisos(pisos, …)` apila los pisos verticalmente (separación 3 m) con etiquetas "PLANTA BAJA"/"PLANTA ALTA"; `generar_plano` despacha automáticamente al flujo multipisos cuando `numero_pisos > 1`; nuevo dataclass `ResultadoPlanoMultipisos`. Si todos los ambientes son sociales (planta alta vacía), cae en distribución de un piso.
+
 ## Siguientes etapas
-1. Más ampliaciones (más tipos de ambiente en las plantillas, varios pisos) y, después, BIM.
+1. BIM export (IfcOpenShell o gbXML).

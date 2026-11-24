@@ -13,6 +13,8 @@ from src.planning.reglas_ambientes import (  # noqa: F401
     AMBIENTES_PRIVADOS,
     AMBIENTES_SERVICIO,
     AMBIENTES_VALIDOS,
+    AMBIENTES_PLANTA_BAJA,
+    AMBIENTES_PLANTA_ALTA,
     DIMENSIONES_REFERENCIA,
     obtener_dimensiones_referencia,
     obtener_proporcion_maxima,
@@ -632,3 +634,48 @@ def optimizar_distribucion(requerimientos):
         solver_resultado = solver
 
     return _extraer_resultado(solver_resultado, nodos, variables)
+
+
+# ============================================================
+# OPTIMIZACIÓN POR PISOS
+# ============================================================
+
+def optimizar_por_pisos(requerimientos) -> list[list[dict]]:
+    """
+    Para viviendas de más de un piso: divide los ambientes en planta baja
+    (social + servicio) y planta(s) alta(s) (privados), añade una escalera
+    a cada piso y los optimiza de forma independiente.
+
+    Retorna una lista de distribuciones, una por piso.
+    Si los ambientes privados quedan vacíos, cae en distribución de un piso.
+    """
+    from src.models.requirements import Ambiente
+
+    n_pisos = max(2, requerimientos.numero_pisos or 2)
+
+    baja: list = []
+    alta: list = []
+
+    for amb in requerimientos.ambientes:
+        nombre_norm = normalizar_nombre(amb.nombre)
+        es_alto = any(
+            nombre_norm.startswith(t) for t in ("dormitorio", "bano", "closet", "pasillo")
+        )
+        if es_alto:
+            alta.append(amb)
+        else:
+            baja.append(amb)
+
+    # Si no hay ambientes privados, optimizar como un solo piso.
+    if not alta:
+        return [optimizar_distribucion(requerimientos)]
+
+    distribuciones = []
+    for piso_ambs in [baja, alta]:
+        piso_ambs = list(piso_ambs) + [Ambiente(nombre="escalera", cantidad=1)]
+        sub_req = requerimientos.model_copy(
+            update={"ambientes": piso_ambs, "numero_pisos": 1}
+        )
+        distribuciones.append(optimizar_distribucion(sub_req))
+
+    return distribuciones

@@ -19,6 +19,9 @@ DIMENSIONES_MOBILIARIO = {
     "inodoro": (0.40, 0.70),
     "ducha": (0.90, 0.90),
     "armario": (1.20, 0.60),
+    "lavadora": (0.60, 0.65),
+    "secadora": (0.60, 0.65),
+    "tina": (1.70, 0.75),
 }
 
 
