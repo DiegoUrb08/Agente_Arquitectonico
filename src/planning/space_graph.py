@@ -1,23 +1,6 @@
 
-import unicodedata
-
 from src.models.requirements import RequerimientosArquitectonicos
-
-
-# ============================================================
-# 1. NORMALIZAR NOMBRES
-# ============================================================
-
-def normalizar_nombre(nombre: str) -> str:
-    texto = str(nombre).strip().lower()
-
-    texto = unicodedata.normalize("NFD", texto)
-
-    return "".join(
-        caracter
-        for caracter in texto
-        if unicodedata.category(caracter) != "Mn"
-    )
+from src.utils.texto import normalizar_nombre
 
 
 # ============================================================

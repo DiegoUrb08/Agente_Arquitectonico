@@ -5,6 +5,14 @@ import ezdxf
 
 from shapely.geometry import Polygon, box
 
+from src.cad.dxf_base import (
+    APP_ID,
+    CAPA_AMBIENTES,
+    CAPA_TERRENO,
+    CAPA_TEXTOS,
+    UNIDADES_METROS,
+)
+
 
 # ==========================================
 # 1. FUNCIONES AUXILIARES
@@ -17,15 +25,19 @@ def obtener_nombre(entidad):
     en los metadatos XDATA.
     """
 
-    if not entidad.has_xdata("AGENTE_ARQ"):
+    if not entidad.has_xdata(APP_ID):
         return None
 
-    datos = entidad.get_xdata("AGENTE_ARQ")
+    datos = entidad.get_xdata(APP_ID)
 
     if not datos:
         return None
 
-    return str(datos[0].value)
+    # XDATA = [identificador, nombre] (ver registrar_metadatos).
+    if len(datos) < 2:
+        return None
+
+    return str(datos[1].value)
 
 
 def obtener_poligono(entidad):
@@ -64,7 +76,7 @@ def obtener_ambientes(modelo):
 
     for entidad in modelo.query("LWPOLYLINE"):
 
-        if entidad.dxf.layer != "AMBIENTES":
+        if entidad.dxf.layer != CAPA_AMBIENTES:
             continue
 
         nombre = obtener_nombre(entidad)
@@ -95,7 +107,7 @@ def obtener_terreno(modelo):
 
     for entidad in modelo.query("LWPOLYLINE"):
 
-        if entidad.dxf.layer != "TERRENO":
+        if entidad.dxf.layer != CAPA_TERRENO:
             continue
 
         if not entidad.closed:
@@ -123,24 +135,31 @@ def obtener_terreno(modelo):
 def buscar_texto(modelo, nombre):
 
     """
-    Encuentra el texto asociado al ambiente.
+    Encuentra la etiqueta de área ("20.00 m2") asociada al ambiente.
+
+    Cada ambiente tiene dos textos con los mismos metadatos: el
+    nombre y el área. Aquí se devuelve el del área, que es el que
+    cambia al editar la superficie.
     """
 
     coincidencias = []
 
     for entidad in modelo.query("TEXT"):
 
-        if entidad.dxf.layer != "TEXTOS":
+        if entidad.dxf.layer != CAPA_TEXTOS:
             continue
 
         nombre_texto = obtener_nombre(entidad)
 
-        if nombre_texto and nombre_texto.casefold() == nombre.casefold():
+        if not nombre_texto or nombre_texto.casefold() != nombre.casefold():
+            continue
+
+        if entidad.dxf.text.strip().lower().endswith("m2"):
             coincidencias.append(entidad)
 
     if len(coincidencias) > 1:
         raise ValueError(
-            f"Hay varias etiquetas asociadas a {nombre}."
+            f"Hay varias etiquetas de área asociadas a {nombre}."
         )
 
     return coincidencias[0] if coincidencias else None
@@ -254,15 +273,12 @@ def modificar_area(
         format="xy"
     )
 
-    # Actualizar la posicion del nombre
+    # Actualizar la etiqueta de area. El centro se conserva, asi que
+    # las etiquetas no necesitan moverse.
     texto = buscar_texto(modelo, nombre)
 
     if texto is not None:
-        texto.dxf.insert = (
-            centro.x,
-            centro.y,
-            0
-        )
+        texto.dxf.text = f"{nuevo_poligono.area:.2f} m2"
 
     # Actualizar geometria en memoria
     ambiente["poligono"] = nuevo_poligono
@@ -304,7 +320,7 @@ def editar_dxf(ruta_entrada, ruta_salida, solicitud):
     # Comprobar unidades: 6 corresponde a metros
     unidades = documento.header.get("$INSUNITS", 0)
 
-    if unidades != 6:
+    if unidades != UNIDADES_METROS:
         raise ValueError(
             "Este editor inicial requiere un DXF "
             "con unidades configuradas en metros."

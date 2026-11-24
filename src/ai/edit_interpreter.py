@@ -1,11 +1,10 @@
 
 import json
-import ollama
 
 from typing import Literal
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
-from src.ai.ollama_client import MODEL_NAME
+from src.ai.ollama_client import MODEL_NAME, chat_con_reintentos
 
 
 # ==========================================
@@ -121,7 +120,7 @@ def interpretar_edicion(instruccion: str) -> EditRequest:
     9. Devuelve una estructura compatible con el esquema proporcionado.
     """
 
-    respuesta = ollama.chat(
+    respuesta = chat_con_reintentos(
         model=MODEL_NAME,
         messages=[
             {
@@ -144,7 +143,7 @@ def interpretar_edicion(instruccion: str) -> EditRequest:
     try:
         resultado = EditRequest.model_validate_json(contenido)
 
-    except Exception as error:
+    except ValueError as error:  # incluye pydantic.ValidationError
         raise ValueError(
             f"No se pudo validar la respuesta de Ollama: {error}"
         ) from error

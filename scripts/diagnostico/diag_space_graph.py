@@ -1,57 +1,23 @@
-from src.planning.space_graph import (
-    Ambiente,
-    GrafoEspacial
+"""Diagnóstico del grafo espacial (API actual: construir_grafo)."""
+
+import json
+
+from src.models.requirements import Ambiente, RequerimientosArquitectonicos
+from src.planning.space_graph import construir_grafo
+
+
+requerimientos = RequerimientosArquitectonicos(
+    ambientes=[
+        Ambiente(nombre="Sala"),
+        Ambiente(nombre="Baño", cantidad=2),
+    ],
+    relaciones_adyacencia=[
+        {"ambiente_a": "baño", "ambiente_b": "baño", "modo": "todos"},
+        {"ambiente_a": "sala", "ambiente_b": "baño", "modo": "al_menos_uno"},
+    ],
 )
 
+grafo = construir_grafo(requerimientos)
 
-grafo = GrafoEspacial()
-
-# Crear ambientes
-grafo.agregar_ambiente(
-    Ambiente(
-        nombre="Sala",
-        categoria="social",
-        area_minima=8,
-        area_objetivo=8,
-        zona="social"
-    )
-)
-
-grafo.agregar_ambiente(
-    Ambiente(
-        nombre="Baño 1",
-        categoria="servicio",
-        area_minima=4,
-        area_objetivo=8,
-        zona="servicio"
-    )
-)
-
-grafo.agregar_ambiente(
-    Ambiente(
-        nombre="Baño 2",
-        categoria="servicio",
-        area_minima=4,
-        area_objetivo=8,
-        zona="servicio"
-    )
-)
-
-# Establecer relacion
-grafo.agregar_relacion(
-    "baño 1",
-    "baño 2",
-    "adyacente",
-    peso=5
-)
-
-# Validar
-errores = grafo.validar()
-
-if errores:
-    print("ERRORES:", errores)
-else:
-    print("GRAFO ESPACIAL CREADO CORRECTAMENTE")
-
-# Mostrar informacion
-print(grafo.exportar())
+print("GRAFO ESPACIAL CREADO CORRECTAMENTE")
+print(json.dumps(grafo, indent=2, ensure_ascii=False))

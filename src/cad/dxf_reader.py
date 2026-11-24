@@ -8,27 +8,44 @@ import ezdxf
 from ezdxf import bbox
 
 
-def analizar_dxf(archivo_bytes):
+def analizar_dxf(archivo):
 
     """
     Lee un archivo DXF y devuelve información
     sobre sus entidades, capas y dimensiones.
+
+    Acepta el contenido en bytes o la ruta del archivo
+    (str o Path).
     """
 
     archivo_temporal = None
 
     try:
-        # Crear un archivo temporal para leer el DXF
-        with tempfile.NamedTemporaryFile(
-            suffix=".dxf",
-            delete=False
-        ) as temporal:
+        if isinstance(archivo, (str, Path)):
+            ruta = Path(archivo)
 
-            temporal.write(archivo_bytes)
-            archivo_temporal = temporal.name
+            if not ruta.exists():
+                raise FileNotFoundError(
+                    f"No existe el archivo: {ruta}"
+                )
+
+            archivo_temporal = None
+            ruta_lectura = str(ruta)
+
+        else:
+            # Crear un archivo temporal para leer el DXF
+            with tempfile.NamedTemporaryFile(
+                suffix=".dxf",
+                delete=False
+            ) as temporal:
+
+                temporal.write(archivo)
+                archivo_temporal = temporal.name
+
+            ruta_lectura = archivo_temporal
 
         # Abrir el documento DXF
-        documento = ezdxf.readfile(archivo_temporal)
+        documento = ezdxf.readfile(ruta_lectura)
 
         # Obtener el espacio modelo
         espacio_modelo = documento.modelspace()

@@ -1,5 +1,4 @@
 
-import ollama
 import json
 
 from src.models.requirements import RequerimientosArquitectonicos
@@ -10,7 +9,7 @@ from src.models.defaults import (
     completar_dimensiones_terreno
 )
 
-from src.ai.ollama_client import MODEL_NAME
+from src.ai.ollama_client import MODEL_NAME, chat_con_reintentos
 
 
 # ============================================================
@@ -128,7 +127,7 @@ No agregues explicaciones antes ni despues.
     # 1.2 CONSULTA A OLLAMA
     # --------------------------------------------------------
 
-    respuesta = ollama.chat(
+    respuesta = chat_con_reintentos(
         model=MODEL_NAME,
         messages=[
             {
@@ -156,7 +155,7 @@ No agregues explicaciones antes ni despues.
 
         raise ValueError(
             f"El modelo devolvio un JSON invalido: {error}"
-        )
+        ) from error
 
     # --------------------------------------------------------
     # 1.4 VALIDACION CON PYDANTIC
@@ -168,11 +167,11 @@ No agregues explicaciones antes ni despues.
             **datos
         )
 
-    except Exception as error:
+    except (TypeError, ValueError) as error:
 
         raise ValueError(
             f"No se pudieron validar los requerimientos: {error}"
-        )
+        ) from error
 
     # --------------------------------------------------------
     # 2. COMPLETAR DIMENSIONES DEL TERRENO

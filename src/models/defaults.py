@@ -1,6 +1,10 @@
+import math
 
 from src.models.requirements import RequerimientosArquitectonicos
+from src.utils.texto import normalizar_nombre
 
+
+# Las claves están normalizadas (sin tildes): ver normalizar_nombre.
 
 # Pesos relativos para distribuir la superficie.
 PESOS_AMBIENTES = {
@@ -9,8 +13,8 @@ PESOS_AMBIENTES = {
     "cocina": 12,
     "dormitorio": 15,
     "dormitorio principal": 17,
-    "baño": 6,
-    "lavandería": 5,
+    "bano": 6,
+    "lavanderia": 5,
     "estudio": 10,
     "terraza": 5,
 }
@@ -23,17 +27,13 @@ AREAS_REFERENCIA = {
     "cocina": 12,
     "dormitorio": 15,
     "dormitorio principal": 17,
-    "baño": 6,
-    "lavandería": 5,
+    "bano": 6,
+    "lavanderia": 5,
     "estudio": 10,
     "terraza": 5,
 }
 
 PORCENTAJE_CIRCULACION = 0.12
-
-
-def normalizar_nombre(nombre: str) -> str:
-    return nombre.strip().lower()
 
 
 def obtener_peso(nombre: str) -> float:
@@ -46,8 +46,8 @@ def obtener_peso(nombre: str) -> float:
     if "dormitorio" in nombre:
         return PESOS_AMBIENTES["dormitorio"]
 
-    if "baño" in nombre:
-        return PESOS_AMBIENTES["baño"]
+    if "bano" in nombre:
+        return PESOS_AMBIENTES["bano"]
 
     return 8
 
@@ -62,8 +62,8 @@ def obtener_area_referencia(nombre: str) -> float:
     if "dormitorio" in nombre:
         return AREAS_REFERENCIA["dormitorio"]
 
-    if "baño" in nombre:
-        return AREAS_REFERENCIA["baño"]
+    if "bano" in nombre:
+        return AREAS_REFERENCIA["bano"]
 
     return 8
 
@@ -228,8 +228,6 @@ def calcular_areas_predeterminadas(
             )
 
     return requerimientos
-
-import math
 
 
 def completar_dimensiones_terreno(requerimientos):
