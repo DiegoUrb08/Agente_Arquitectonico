@@ -101,8 +101,8 @@ def test_mover_errores_de_uso(dxf, tmp_path):
     salida = str(tmp_path / "x.dxf")
     with pytest.raises(ValueError, match="si mismo"):
         editar_dxf(str(dxf), salida, _mover("sala", "sala", "junto_a"))
-    with pytest.raises(NotImplementedError):
-        editar_dxf(str(dxf), salida, _mover("sala", "cocina", "lejos_de"))
+    with pytest.raises(ValueError, match="si mismo"):
+        editar_dxf(str(dxf), salida, _mover("sala", "sala", "lejos_de"))
     with pytest.raises(ValueError, match="No se encontro"):
         editar_dxf(str(dxf), salida, _mover("sala", "garaje", "junto_a"))
 
@@ -185,3 +185,20 @@ def test_editar_plano_tras_reducir_area_sigue_conectado(dxf, tmp_path):
     r = editar_plano(str(dxf), str(tmp_path / "c.dxf"), _modificar("cocina", 6))
     ady = {(a["ambiente_a"], a["ambiente_b"]) for a in r["plano"].validacion["adyacencias"]}
     assert ("sala_1", "cocina_1") in ady
+
+
+def test_lejos_de_aumenta_la_distancia_a_la_referencia(dxf, tmp_path):
+    antes, _ = _ambientes(dxf)
+    d0 = antes["dormitorio_1"]["poligono"].distance(antes["sala_1"]["poligono"])
+
+    salida = tmp_path / "lejos.dxf"
+    r = editar_dxf(str(dxf), str(salida), _mover("dormitorio 1", "sala", "lejos_de"))
+
+    despues, _ = _ambientes(salida)
+    nueva = despues["dormitorio_1"]["poligono"]
+    assert nueva.distance(despues["sala_1"]["poligono"]) > d0
+    assert nueva.area == pytest.approx(antes["dormitorio_1"]["poligono"].area)
+    for id_, a in despues.items():
+        if id_ != "dormitorio_1":
+            assert nueva.intersection(a["poligono"]).area < 1e-6
+    assert r["modificaciones"][0]["relacion"] == "lejos_de"

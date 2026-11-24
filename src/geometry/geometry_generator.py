@@ -3,6 +3,7 @@ from shapely.geometry import Polygon
 
 
 TOLERANCIA = 1e-6
+DECIMALES = 4
 
 
 def construir_poligono_ambiente(ambiente: dict) -> Polygon:
@@ -24,12 +25,15 @@ def construir_poligono_ambiente(ambiente: dict) -> Polygon:
             f"{ambiente['nombre']}"
         )
 
-    puntos = [
-        (x, y),
-        (x + ancho, y),
-        (x + ancho, y + largo),
-        (x, y + largo),
-    ]
+    # Redondear las esquinas evita que el ruido de coma flotante
+    # (p. ej. 11.4 + 3.7 = 15.100000000000001) desalinee los bordes
+    # compartidos y haga desaparecer el muro entre dos ambientes.
+    x1 = round(x, DECIMALES)
+    y1 = round(y, DECIMALES)
+    x2 = round(x + ancho, DECIMALES)
+    y2 = round(y + largo, DECIMALES)
+
+    puntos = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
 
     return Polygon(puntos)
 

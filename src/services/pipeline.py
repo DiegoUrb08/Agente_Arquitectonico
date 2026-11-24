@@ -13,6 +13,7 @@ from src.cad.dxf_generator import generar_dxf_desde_geometrias
 from src.geometry.adjacency_validator import validar_distribucion
 from src.geometry.door_generator import generar_puertas_automaticas
 from src.geometry.geometry_generator import generar_geometrias
+from src.geometry.mobiliario_automatico import amueblar_automaticamente
 from src.geometry.opening_generator import generar_aberturas
 from src.geometry.wall_generator import generar_muros
 from src.models.distribucion import validar_esquema_distribucion
@@ -32,6 +33,7 @@ class ResultadoPlano:
     puertas: dict
     aberturas: dict
     ruta_dxf: Path
+    mobiliario: dict | None = None
 
 
 def generar_plano(
@@ -68,6 +70,7 @@ def construir_plano(
     largo,
     ruta_dxf,
     progreso: Callable[[str], None] | None = None,
+    amueblar: bool = True,
 ) -> ResultadoPlano:
     """
     Genera validación, geometrías, muros, puertas, aberturas y DXF
@@ -111,6 +114,12 @@ def construir_plano(
         aberturas=puertas["puertas"],
     )
 
+    mobiliario = None
+
+    if amueblar:
+        avisar("Colocando el mobiliario...")
+        mobiliario = amueblar_automaticamente(geometrias, puertas)
+
     avisar("Construyendo el plano DXF...")
     ruta = Path(ruta_dxf)
     ruta.parent.mkdir(parents=True, exist_ok=True)
@@ -122,6 +131,7 @@ def construir_plano(
         ruta_salida=str(ruta),
         resultado_muros=muros,
         resultado_aberturas=aberturas,
+        resultado_mobiliario=mobiliario,
     )
 
     return ResultadoPlano(
@@ -132,6 +142,7 @@ def construir_plano(
         puertas=puertas,
         aberturas=aberturas,
         ruta_dxf=ruta,
+        mobiliario=mobiliario,
     )
 
 

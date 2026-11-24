@@ -454,6 +454,33 @@ def _candidatos_junto_a(rect_ref, ancho, alto, lado):
     ]
 
 
+PASO_LEJOS_M = 0.5
+
+
+def _candidatos_lejos_de(terreno, ancho, alto):
+
+    """
+    Posiciones (esquina inferior izquierda) sobre una malla que cubre
+    el terreno, incluyendo siempre los bordes.
+    """
+
+    xmin, ymin, xmax, ymax = terreno.bounds
+
+    def valores(minimo, maximo, tamano):
+        ultimo = maximo - tamano
+        if ultimo < minimo:
+            return []
+        n = int((ultimo - minimo) / PASO_LEJOS_M)
+        lista = [minimo + i * PASO_LEJOS_M for i in range(n + 1)]
+        if lista[-1] < ultimo - TOLERANCIA:
+            lista.append(ultimo)
+        return lista
+
+    for x0 in valores(xmin, xmax, ancho):
+        for y0 in valores(ymin, ymax, alto):
+            yield x0, y0
+
+
 def mover_ambiente(
     modelo,
     ambientes,
@@ -468,14 +495,11 @@ def mover_ambiente(
     (izquierda, derecha, arriba o abajo de ella). Conserva sus
     dimensiones. Elige la posicion valida mas cercana a la actual
     que no salga del terreno ni se superponga con otros ambientes.
+    Con 'lejos_de' elige, en cambio, la posicion valida mas alejada de
+    la referencia.
     """
 
-    if relacion == "lejos_de":
-        raise NotImplementedError(
-            "La relacion 'lejos_de' no esta implementada."
-        )
-
-    if relacion not in LADOS_POR_RELACION:
+    if relacion != "lejos_de" and relacion not in LADOS_POR_RELACION:
         raise ValueError(f"Relacion espacial desconocida: {relacion}.")
 
     ambiente = resolver_ambiente(ambientes, nombre)
@@ -497,24 +521,41 @@ def mover_ambiente(
     mejor = None
     ultimo_error = None
 
-    for lado in LADOS_POR_RELACION[relacion]:
+    if relacion == "lejos_de":
+        candidatos = _candidatos_lejos_de(terreno, ancho, alto)
+    else:
+        candidatos = (
+            posicion
+            for lado in LADOS_POR_RELACION[relacion]
+            for posicion in _candidatos_junto_a(rect_ref, ancho, alto, lado)
+        )
 
-        for x0, y0 in _candidatos_junto_a(rect_ref, ancho, alto, lado):
+    for x0, y0 in candidatos:
 
-            candidato = box(x0, y0, x0 + ancho, y0 + alto)
+        candidato = box(x0, y0, x0 + ancho, y0 + alto)
 
-            error = _comprobar_ubicacion(
-                candidato, ambiente, ambientes, terreno
+        error = _comprobar_ubicacion(
+            candidato, ambiente, ambientes, terreno
+        )
+
+        if error:
+            ultimo_error = error
+            continue
+
+        if relacion == "lejos_de":
+            # Mayor separacion respecto a la referencia; a igualdad,
+            # la posicion mas cercana a la actual.
+            puntuacion = (
+                -round(candidato.distance(ambiente_ref["poligono"]), 3),
+                candidato.centroid.distance(centro_actual),
+            )
+        else:
+            puntuacion = (
+                candidato.centroid.distance(centro_actual),
             )
 
-            if error:
-                ultimo_error = error
-                continue
-
-            distancia = candidato.centroid.distance(centro_actual)
-
-            if mejor is None or distancia < mejor[0]:
-                mejor = (distancia, candidato)
+        if mejor is None or puntuacion < mejor[0]:
+            mejor = (puntuacion, candidato)
 
     if mejor is None:
         raise ValueError(
