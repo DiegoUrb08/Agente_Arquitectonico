@@ -1,0 +1,29 @@
+﻿# Entorno y cachés
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Credenciales y configuración local
+.env
+.env.*
+*.key
+*.pem
+secrets*.json
+credentials*.json
+
+# Temporales y sistema
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# Resultados generados
+output/
