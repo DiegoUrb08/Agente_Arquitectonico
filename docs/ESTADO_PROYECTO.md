@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **60 pruebas pytest, todas pasan** (~10 s): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos y errores), pipeline completo y arranque de la UI con `streamlit.testing.AppTest`.
+- **64 pruebas pytest, todas pasan** (~10 s): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos y errores), pipeline completo y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -49,15 +49,15 @@
    - Las etiquetas se desplazan con el ambiente; la UI muestra las modificaciones y los avisos.
 3. **`optimizar_distribucion` dividida** en 14 funciones (validación, variables, adyacencias, conectividad por flujo, relaciones, desviaciones, distancias, extracción) con el mismo modelo CP-SAT y el mismo orden de construcción. El solver es multihilo y no determinista, así que la regresión se verificó por el objetivo: la desviación de áreas óptima es idéntica antes y después (0.00 y 0.09 m² en los dos casos de referencia). Se añadieron pruebas de invariantes (sin solapes, dentro del terreno, relaciones cumplidas, conectividad) y de errores.
 
+4. **Validación de capacidad del terreno** (`_validar_capacidad_terreno` en `layout_optimizer.py`): error claro si la suma de áreas mínimas supera el terreno, si el área por piso (`area_total / pisos`) lo supera o si `numero_pisos < 1`.
+5. **Mensajes amigables** (`src/ai/errores.py`, `mensaje_amigable`): las respuestas inválidas del modelo (p. ej. "agrega una piscina" → `area_objetivo: 0`) producen una explicación en lenguaje llano con el detalle técnico al final.
+
 ## Limitaciones conocidas
 - Tras editar, los **muros, puertas, ventanas y mobiliario no se recalculan** (la salida lo avisa). Solo se mueven/redimensionan ambientes y sus etiquetas.
 - El editor solo opera con habitaciones rectangulares y DXF en metros.
 - En distribuciones muy compactas, `modificar_area` y `mover_ambiente` suelen rechazar el cambio por falta de espacio (comportamiento correcto, pero limitante).
-- `optimizar_distribucion` no comprueba que el área de vivienda quepa en el terreno (un terreno de 3x3 con 100 m² de vivienda produce una distribución con grandes desviaciones en vez de un error).
 - Sin remoto Git ni CI.
 
 ## Siguientes etapas
 1. Regenerar muros/puertas al editar (o permitir ediciones sobre la distribución y regenerar el plano completo en vez de editar el DXF).
-2. Validar la coherencia área de vivienda / terreno / pisos antes de optimizar.
-3. Mensajes de error amigables para respuestas inválidas del modelo (p. ej. peticiones fuera de catálogo).
-4. Ampliaciones funcionales y, después, BIM.
+2. Ampliaciones funcionales y, después, BIM.

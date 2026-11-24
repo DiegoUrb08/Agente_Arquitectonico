@@ -9,6 +9,7 @@ from src.models.defaults import (
     completar_dimensiones_terreno
 )
 
+from src.ai.errores import mensaje_amigable
 from src.ai.ollama_client import MODEL_NAME, chat_con_reintentos
 
 
@@ -170,7 +171,7 @@ No agregues explicaciones antes ni despues.
     except (TypeError, ValueError) as error:
 
         raise ValueError(
-            f"No se pudieron validar los requerimientos: {error}"
+            mensaje_amigable(error, "los requerimientos")
         ) from error
 
     # --------------------------------------------------------

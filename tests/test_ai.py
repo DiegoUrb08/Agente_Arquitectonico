@@ -137,3 +137,15 @@ def test_consultar_modelo_devuelve_mensaje_de_error(monkeypatch):
 
     monkeypatch.setattr(ollama_client, "chat_con_reintentos", falla)
     assert "Error al comunicarse" in ollama_client.consultar_modelo("hola")
+
+
+def test_interpretar_edicion_fuera_de_catalogo_da_mensaje_amigable(monkeypatch):
+    datos = {"operaciones": [
+        {"tipo": "modificar_area", "ambiente": "piscina", "area_objetivo": 0}
+    ]}
+    monkeypatch.setattr(
+        edit_interpreter, "chat_con_reintentos", lambda **kw: _respuesta(datos)
+    )
+    with pytest.raises(ValueError, match="ambiente soportado") as info:
+        edit_interpreter.interpretar_edicion("agrega una piscina")
+    assert "validar" in str(info.value)

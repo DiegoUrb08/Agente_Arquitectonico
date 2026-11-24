@@ -4,6 +4,7 @@ import json
 from typing import Literal
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
+from src.ai.errores import mensaje_amigable
 from src.ai.ollama_client import MODEL_NAME, chat_con_reintentos
 
 
@@ -145,7 +146,7 @@ def interpretar_edicion(instruccion: str) -> EditRequest:
 
     except ValueError as error:  # incluye pydantic.ValidationError
         raise ValueError(
-            f"No se pudo validar la respuesta de Ollama: {error}"
+            mensaje_amigable(error, "la edición solicitada")
         ) from error
 
     return resultado

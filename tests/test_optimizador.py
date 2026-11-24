@@ -101,10 +101,34 @@ def test_terreno_invalido(ancho, largo, mensaje):
 
 def test_area_minima_mayor_que_el_terreno():
     req = _req([Ambiente(nombre="sala", area_minima_m2=50)], ancho=5, largo=5)
-    with pytest.raises(ValueError, match="supera la superficie"):
+    with pytest.raises(ValueError, match="necesitan al menos"):
         optimizar_distribucion(req)
 
 
 def test_relacion_con_ambiente_inexistente():
     with pytest.raises(ValueError, match="No existe"):
         optimizar_distribucion(_req([Ambiente(nombre="sala")], [["sala", "garaje"]]))
+
+
+def test_ambientes_no_caben_en_el_terreno():
+    req = _req(
+        [Ambiente(nombre="sala", area_minima_m2=8, cantidad=3)],
+        ancho=4, largo=5,
+    )
+    with pytest.raises(ValueError, match="necesitan al menos"):
+        optimizar_distribucion(req)
+
+
+def test_vivienda_por_piso_mayor_que_el_terreno():
+    req = _req([Ambiente(nombre="sala")], ancho=5, largo=5)
+    req.numero_pisos = 2
+    req.area_total_vivienda_m2 = 100
+    with pytest.raises(ValueError, match="cada planta"):
+        optimizar_distribucion(req)
+
+
+def test_numero_de_pisos_invalido():
+    req = _req([Ambiente(nombre="sala")])
+    req.numero_pisos = 0
+    with pytest.raises(ValueError, match="pisos"):
+        optimizar_distribucion(req)

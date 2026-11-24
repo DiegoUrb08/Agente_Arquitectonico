@@ -57,6 +57,42 @@ def _validar_terreno(requerimientos):
     return ancho_dm, largo_dm
 
 
+def _validar_capacidad_terreno(requerimientos, nodos, area_terreno_dm2):
+    """
+    Comprueba que lo solicitado quepa en el terreno antes de resolver.
+
+    El optimizador distribuye todos los ambientes en una sola planta,
+    por lo que la suma de las áreas mínimas debe caber en el terreno.
+    """
+
+    area_terreno_m2 = area_terreno_dm2 / 100
+
+    pisos = requerimientos.numero_pisos
+    if pisos is not None and pisos < 1:
+        raise ValueError("El número de pisos debe ser al menos 1.")
+
+    minima_m2 = sum(
+        obtener_areas_ambiente(nodo)[0] for nodo in nodos
+    ) / 100
+
+    if minima_m2 > area_terreno_m2:
+        raise ValueError(
+            f"Los ambientes pedidos necesitan al menos {minima_m2:.1f} m² "
+            f"y el terreno solo tiene {area_terreno_m2:.1f} m². "
+            "Aumenta el terreno o reduce los ambientes."
+        )
+
+    total = requerimientos.area_total_vivienda_m2
+    if total is not None and pisos and pisos >= 1:
+        por_piso = total / pisos
+        if por_piso > area_terreno_m2:
+            raise ValueError(
+                f"Con {pisos} piso(s), cada planta ocuparía {por_piso:.1f} m² "
+                f"y el terreno solo tiene {area_terreno_m2:.1f} m². "
+                "Aumenta el terreno o el número de pisos."
+            )
+
+
 def _validar_grafo(grafo):
     """Comprueba nodos, identificadores y relaciones."""
 
@@ -492,6 +528,8 @@ def optimizar_distribucion(requerimientos):
 
     nodos = grafo["nodos"]
     relaciones = grafo["relaciones"]
+
+    _validar_capacidad_terreno(requerimientos, nodos, area_terreno_dm2)
 
     modelo = cp_model.CpModel()
 
