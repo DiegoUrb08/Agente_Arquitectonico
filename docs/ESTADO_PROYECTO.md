@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **67 pruebas pytest, todas pasan** (~10 s): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos y errores), pipeline completo y arranque de la UI con `streamlit.testing.AppTest`.
+- **70 pruebas pytest, todas pasan** (~10 s): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos y errores), pipeline completo y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -52,14 +52,14 @@
 4. **Validación de capacidad del terreno** (`_validar_capacidad_terreno` en `layout_optimizer.py`): error claro si la suma de áreas mínimas supera el terreno, si el área por piso (`area_total / pisos`) lo supera o si `numero_pisos < 1`.
 5. **Mensajes amigables** (`src/ai/errores.py`, `mensaje_amigable`): las respuestas inválidas del modelo (p. ej. "agrega una piscina" → `area_objetivo: 0`) producen una explicación en lenguaje llano con el detalle técnico al final.
 6. **Regeneración tras editar** (`pipeline.editar_plano`): la UI aplica la edición sobre la distribución leída del DXF y regenera todo (muros, puertas, aberturas) con `construir_plano`, extraída de `generar_plano`. `dxf_editor` se dividió en `cargar_y_editar` (en memoria) + `distribucion_desde_ambientes`; `editar_dxf` se conserva (edición directa, avisa que no recalcula). Si la edición deja ambientes sin pared compartida, la salida lo avisa.
+7. **`modificar_area` conserva el contacto con los vecinos**: prueba el nuevo tamaño centrado y anclado a cada esquina, descarta los que se salen o se superponen y elige el que mantiene más pared compartida (el centrado gana los empates). Las etiquetas se desplazan con el ambiente. Si ningún candidato cabe, se rechaza como antes.
 
 ## Limitaciones conocidas
-- `editar_plano` regenera muros, puertas y aberturas, pero el **mobiliario no se regenera** (`construir_plano` no lo incluye, igual que `generar_plano`) y `modificar_area` encoge/agranda desde el centro, por lo que puede separar al ambiente de sus vecinos (se avisa).
+- `editar_plano` regenera muros, puertas y aberturas, pero el **mobiliario no se regenera** (`construir_plano` no lo incluye, igual que `generar_plano`) y, si un ambiente que actúa de «nudo» cambia mucho de tamaño, puede quedar sin pared compartida con algún vecino (se avisa; no se reubican los vecinos).
 - `editar_dxf` (edición directa) sigue sin recalcular muros ni puertas.
 - El editor solo opera con habitaciones rectangulares y DXF en metros.
 - En distribuciones muy compactas, `modificar_area` y `mover_ambiente` suelen rechazar el cambio por falta de espacio (comportamiento correcto, pero limitante).
 - Sin remoto Git ni CI.
 
 ## Siguientes etapas
-1. Que `modificar_area` conserve el contacto con los vecinos (anclar al borde compartido o reoptimizar).
-2. Ampliaciones funcionales y, después, BIM.
+1. Ampliaciones funcionales y, después, BIM.

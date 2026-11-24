@@ -141,3 +141,47 @@ def test_editar_plano_rechaza_misma_ruta(dxf):
 
     with pytest.raises(ValueError, match="diferente"):
         editar_plano(str(dxf), str(dxf), _mover("cocina", "sala", "derecha_de"))
+
+
+def _modificar(ambiente, area):
+    return EditRequest(operaciones=[
+        EditOperation(tipo="modificar_area", ambiente=ambiente, area_objetivo=area)
+    ])
+
+
+def test_reducir_area_conserva_contacto_con_vecinos(dxf, tmp_path):
+    # Cocina (5..8 x 0..4) toca a la sala por x=5; al reducirla debe seguir pegada.
+    salida = tmp_path / "red.dxf"
+    editar_dxf(str(dxf), str(salida), _modificar("cocina", 6))
+
+    amb, doc = _ambientes(salida)
+    cocina, sala = amb["cocina_1"]["poligono"], amb["sala_1"]["poligono"]
+
+    assert cocina.area == pytest.approx(6.0)
+    assert cocina.bounds[0] == pytest.approx(5.0)
+    assert cocina.boundary.intersection(sala.boundary).length > 1.0
+
+
+def test_reducir_area_mueve_las_etiquetas_con_el_ambiente(dxf, tmp_path):
+    salida = tmp_path / "et.dxf"
+    editar_dxf(str(dxf), str(salida), _modificar("cocina", 6))
+
+    amb, doc = _ambientes(salida)
+    xmin, ymin, xmax, ymax = amb["cocina_1"]["poligono"].bounds
+
+    from src.cad.dxf_editor import buscar_textos
+    etiquetas = buscar_textos(doc.modelspace(), amb["cocina_1"])
+    assert etiquetas
+    for t in etiquetas:
+        x, y, _ = t.dxf.insert
+        assert xmin - 0.01 <= x <= xmax + 0.01
+        assert ymin - 0.01 <= y <= ymax + 0.01
+    assert any(t.dxf.text.strip() == "6.00 m2" for t in etiquetas)
+
+
+def test_editar_plano_tras_reducir_area_sigue_conectado(dxf, tmp_path):
+    from src.services.pipeline import editar_plano
+
+    r = editar_plano(str(dxf), str(tmp_path / "c.dxf"), _modificar("cocina", 6))
+    ady = {(a["ambiente_a"], a["ambiente_b"]) for a in r["plano"].validacion["adyacencias"]}
+    assert ("sala_1", "cocina_1") in ady

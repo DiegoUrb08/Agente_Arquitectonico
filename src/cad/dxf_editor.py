@@ -235,6 +235,68 @@ def _comprobar_ubicacion(candidato, ambiente, ambientes, terreno):
     return None
 
 
+def _desplazar_textos(modelo, ambiente, desplazamiento_x, desplazamiento_y):
+
+    """
+    Mueve las etiquetas del ambiente el mismo desplazamiento que su poligono.
+    """
+
+    for texto in buscar_textos(modelo, ambiente):
+
+        x, y, z = texto.dxf.insert
+
+        texto.dxf.insert = (
+            x + desplazamiento_x,
+            y + desplazamiento_y,
+            z
+        )
+
+        # Los textos centrados usan tambien align_point.
+        if texto.dxf.hasattr("align_point"):
+
+            ax, ay, az = texto.dxf.align_point
+
+            texto.dxf.align_point = (
+                ax + desplazamiento_x,
+                ay + desplazamiento_y,
+                az
+            )
+
+
+def _contacto_total(poligono, ambiente, ambientes):
+
+    """
+    Longitud de pared que `poligono` comparte con los demas ambientes.
+    """
+
+    return sum(
+        poligono.boundary.intersection(otro["poligono"].boundary).length
+        for otro in ambientes
+        if otro is not ambiente
+    )
+
+
+def _candidatos_redimension(poligono, nuevo_ancho, nuevo_alto):
+
+    """
+    Rectangulos del nuevo tamano: centrado y anclado a cada esquina.
+    """
+
+    xmin, ymin, xmax, ymax = poligono.bounds
+    centro = poligono.centroid
+
+    return [
+        box(
+            centro.x - nuevo_ancho / 2, centro.y - nuevo_alto / 2,
+            centro.x + nuevo_ancho / 2, centro.y + nuevo_alto / 2
+        ),
+        box(xmin, ymin, xmin + nuevo_ancho, ymin + nuevo_alto),
+        box(xmax - nuevo_ancho, ymin, xmax, ymin + nuevo_alto),
+        box(xmin, ymax - nuevo_alto, xmin + nuevo_ancho, ymax),
+        box(xmax - nuevo_ancho, ymax - nuevo_alto, xmax, ymax),
+    ]
+
+
 def _actualizar_poligono(ambiente, nuevo_poligono):
 
     ambiente["entidad"].set_points(
@@ -273,8 +335,9 @@ def modificar_area(
 ):
 
     """
-    Cambia el area de una habitacion rectangular,
-    conservando su centro y proporcion.
+    Cambia el area de una habitacion rectangular conservando su
+    proporcion. Se ancla a la esquina (o al centro) que mantiene mas
+    pared compartida con los ambientes vecinos.
     """
 
     ambiente = resolver_ambiente(ambientes, nombre)
@@ -294,25 +357,39 @@ def modificar_area(
     nuevo_ancho = (xmax - xmin) * factor
     nuevo_alto = (ymax - ymin) * factor
 
-    centro = poligono.centroid
+    # Se prueba centrado y anclado a cada esquina; gana el que conserva
+    # mas pared compartida con los vecinos (el centrado gana los empates).
+    validos = []
+    primer_error = None
 
-    nuevo_poligono = box(
-        centro.x - nuevo_ancho / 2,
-        centro.y - nuevo_alto / 2,
-        centro.x + nuevo_ancho / 2,
-        centro.y + nuevo_alto / 2
-    )
+    for orden, candidato in enumerate(
+        _candidatos_redimension(poligono, nuevo_ancho, nuevo_alto)
+    ):
 
-    error = _comprobar_ubicacion(
-        nuevo_poligono, ambiente, ambientes, terreno
-    )
+        error = _comprobar_ubicacion(candidato, ambiente, ambientes, terreno)
 
-    if error:
-        raise ValueError(error)
+        if error:
+            primer_error = primer_error or error
+            continue
+
+        validos.append((
+            -round(_contacto_total(candidato, ambiente, ambientes), 6),
+            orden,
+            candidato
+        ))
+
+    if not validos:
+        raise ValueError(primer_error)
+
+    nuevo_poligono = min(validos, key=lambda v: v[:2])[2]
+
+    desplazamiento_x = nuevo_poligono.centroid.x - poligono.centroid.x
+    desplazamiento_y = nuevo_poligono.centroid.y - poligono.centroid.y
 
     _actualizar_poligono(ambiente, nuevo_poligono)
 
-    # El centro se conserva: solo cambia el texto del area.
+    _desplazar_textos(modelo, ambiente, desplazamiento_x, desplazamiento_y)
+
     for texto in buscar_textos(modelo, ambiente):
 
         if _es_etiqueta_area(texto):
@@ -454,26 +531,7 @@ def mover_ambiente(
 
     _actualizar_poligono(ambiente, nuevo_poligono)
 
-    for texto in buscar_textos(modelo, ambiente):
-
-        x, y, z = texto.dxf.insert
-
-        texto.dxf.insert = (
-            x + desplazamiento_x,
-            y + desplazamiento_y,
-            z
-        )
-
-        # Los textos centrados usan tambien align_point.
-        if texto.dxf.hasattr("align_point"):
-
-            ax, ay, az = texto.dxf.align_point
-
-            texto.dxf.align_point = (
-                ax + desplazamiento_x,
-                ay + desplazamiento_y,
-                az
-            )
+    _desplazar_textos(modelo, ambiente, desplazamiento_x, desplazamiento_y)
 
     return {
         "ambiente": ambiente["nombre"],
