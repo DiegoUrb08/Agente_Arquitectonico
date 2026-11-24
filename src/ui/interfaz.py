@@ -9,9 +9,8 @@ import streamlit as st
 from src.ai.edit_interpreter import interpretar_edicion
 from src.ai.interpreter import interpretar_instruccion
 from src.ai.ollama_client import OllamaError
-from src.cad.dxf_editor import editar_dxf
 from src.cad.dxf_reader import analizar_dxf
-from src.services.pipeline import generar_plano
+from src.services.pipeline import editar_plano, generar_plano
 
 logger = logging.getLogger(__name__)
 
@@ -259,8 +258,8 @@ def seccion_editar():
 
         ruta_modificada = CARPETA_SALIDA / "plano_modificado.dxf"
 
-        with st.spinner("Aplicando modificaciones al plano..."):
-            resultado = editar_dxf(
+        with st.spinner("Aplicando modificaciones y regenerando el plano..."):
+            resultado = editar_plano(
                 str(ruta_entrada), str(ruta_modificada), solicitud
             )
 

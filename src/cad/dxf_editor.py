@@ -498,25 +498,19 @@ ADVERTENCIA_ELEMENTOS = (
 )
 
 
-def editar_dxf(ruta_entrada, ruta_salida, solicitud):
+def cargar_y_editar(ruta_entrada, solicitud):
 
     """
-    Ejecuta las operaciones interpretadas por Qwen
-    y guarda un nuevo archivo DXF.
+    Abre el DXF y aplica las operaciones en memoria.
+
+    Devuelve (documento, ambientes, terreno, resultados) sin guardar.
     """
 
     entrada = Path(ruta_entrada)
-    salida = Path(ruta_salida)
 
     if not entrada.exists():
         raise FileNotFoundError(
             f"No existe el archivo: {entrada}"
-        )
-
-    if entrada.resolve() == salida.resolve():
-        raise ValueError(
-            "El archivo de salida debe ser diferente "
-            "del archivo original."
         )
 
     documento = ezdxf.readfile(str(entrada))
@@ -564,6 +558,52 @@ def editar_dxf(ruta_entrada, ruta_salida, solicitud):
                 referencia=operacion.referencia,
                 relacion=operacion.relacion
             ))
+
+    return documento, ambientes, terreno, resultados
+
+
+def distribucion_desde_ambientes(ambientes):
+
+    """
+    Convierte los ambientes (rectangulares) del DXF en una distribucion
+    compatible con el pipeline, redondeando a milimetros.
+    """
+
+    distribucion = []
+
+    for ambiente in ambientes:
+
+        xmin, ymin, xmax, ymax = _rectangulo_o_error(ambiente["poligono"])
+
+        distribucion.append({
+            "id": ambiente["id"],
+            "nombre": ambiente["nombre"],
+            "x": round(xmin, 3),
+            "y": round(ymin, 3),
+            "ancho": round(xmax - xmin, 3),
+            "largo": round(ymax - ymin, 3),
+        })
+
+    return distribucion
+
+
+def editar_dxf(ruta_entrada, ruta_salida, solicitud):
+
+    """
+    Ejecuta las operaciones interpretadas por Qwen
+    y guarda un nuevo archivo DXF.
+    """
+
+    entrada = Path(ruta_entrada)
+    salida = Path(ruta_salida)
+
+    if entrada.exists() and entrada.resolve() == salida.resolve():
+        raise ValueError(
+            "El archivo de salida debe ser diferente "
+            "del archivo original."
+        )
+
+    documento, _, _, resultados = cargar_y_editar(entrada, solicitud)
 
     salida.parent.mkdir(
         parents=True,

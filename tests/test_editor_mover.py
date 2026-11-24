@@ -105,3 +105,39 @@ def test_mover_errores_de_uso(dxf, tmp_path):
         editar_dxf(str(dxf), salida, _mover("sala", "cocina", "lejos_de"))
     with pytest.raises(ValueError, match="No se encontro"):
         editar_dxf(str(dxf), salida, _mover("sala", "garaje", "junto_a"))
+
+
+def test_editar_plano_regenera_muros_y_puertas(dxf, tmp_path):
+    from src.services.pipeline import editar_plano
+
+    salida = tmp_path / "regen.dxf"
+    r = editar_plano(
+        str(dxf), str(salida), _mover("dormitorio 1", "sala", "arriba_de")
+    )
+
+    assert salida.exists()
+    assert not any("no se recalculan" in o for o in r["observaciones"])
+
+    plano = r["plano"]
+    nuevos = {a["id"]: a for a in plano.distribucion}
+    assert nuevos["dormitorio_1"]["y"] == pytest.approx(4.0)
+    # Los muros se calcularon sobre la nueva posicion.
+    assert plano.muros and plano.puertas["puertas"]
+
+    amb, _ = _ambientes(salida)
+    assert amb["dormitorio_1"]["poligono"].bounds[1] == pytest.approx(4.0)
+
+
+def test_editar_plano_avisa_si_queda_desconectado(dxf, tmp_path):
+    from src.services.pipeline import editar_plano
+
+    # Los dormitorios del fixture ya estan aislados de sala/cocina.
+    r = editar_plano(str(dxf), str(tmp_path / "r.dxf"), _mover("cocina", "sala", "derecha_de"))
+    assert any("sin pared compartida" in o for o in r["observaciones"])
+
+
+def test_editar_plano_rechaza_misma_ruta(dxf):
+    from src.services.pipeline import editar_plano
+
+    with pytest.raises(ValueError, match="diferente"):
+        editar_plano(str(dxf), str(dxf), _mover("cocina", "sala", "derecha_de"))

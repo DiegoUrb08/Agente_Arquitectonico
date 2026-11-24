@@ -58,6 +58,26 @@ def generar_plano(
 
     avisar("Optimizando la distribución espacial...")
     distribucion = optimizar_distribucion(requerimientos)
+
+    return construir_plano(distribucion, ancho, largo, ruta_dxf, progreso)
+
+
+def construir_plano(
+    distribucion,
+    ancho,
+    largo,
+    ruta_dxf,
+    progreso: Callable[[str], None] | None = None,
+) -> ResultadoPlano:
+    """
+    Genera validación, geometrías, muros, puertas, aberturas y DXF
+    a partir de una distribución ya resuelta (del optimizador o editada).
+    """
+
+    def avisar(mensaje: str):
+        if progreso:
+            progreso(mensaje)
+
     validar_esquema_distribucion(distribucion)
 
     avisar("Validando las conexiones entre ambientes...")
@@ -113,3 +133,59 @@ def generar_plano(
         aberturas=aberturas,
         ruta_dxf=ruta,
     )
+
+
+def editar_plano(
+    ruta_entrada,
+    ruta_salida,
+    solicitud,
+    progreso: Callable[[str], None] | None = None,
+) -> dict:
+    """
+    Aplica la edición sobre la distribución del DXF y regenera el plano
+    completo (muros, puertas, aberturas) para que quede coherente.
+
+    Devuelve las claves de `editar_dxf` más `plano` (ResultadoPlano).
+    """
+
+    from src.cad.dxf_editor import (
+        cargar_y_editar,
+        distribucion_desde_ambientes,
+    )
+
+    entrada = Path(ruta_entrada)
+    salida = Path(ruta_salida)
+
+    if entrada.exists() and entrada.resolve() == salida.resolve():
+        raise ValueError(
+            "El archivo de salida debe ser diferente del archivo original."
+        )
+
+    _, ambientes, terreno, resultados = cargar_y_editar(entrada, solicitud)
+
+    xmin, ymin, xmax, ymax = terreno.bounds
+    distribucion = distribucion_desde_ambientes(ambientes)
+
+    plano = construir_plano(
+        distribucion,
+        round(xmax - xmin, 3),
+        round(ymax - ymin, 3),
+        salida,
+        progreso,
+    )
+
+    observaciones = list(solicitud.observaciones)
+
+    if not plano.validacion["distribucion_conectada"]:
+        observaciones.append(
+            "Tras la edición hay ambientes sin pared compartida con el "
+            "resto, por lo que no tienen puerta. Prueba a moverlos junto "
+            "a otro ambiente."
+        )
+
+    return {
+        "archivo": str(salida),
+        "modificaciones": resultados,
+        "observaciones": observaciones,
+        "plano": plano,
+    }
