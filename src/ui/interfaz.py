@@ -260,9 +260,16 @@ def seccion_editar():
         ruta_modificada = CARPETA_SALIDA / "plano_modificado.dxf"
 
         with st.spinner("Aplicando modificaciones al plano..."):
-            editar_dxf(str(ruta_entrada), str(ruta_modificada), solicitud)
+            resultado = editar_dxf(
+                str(ruta_entrada), str(ruta_modificada), solicitud
+            )
 
         st.success("El plano fue modificado correctamente.")
+
+        st.json(resultado["modificaciones"])
+
+        for aviso in resultado["observaciones"]:
+            st.info(aviso)
 
         st.download_button(
             label="Descargar plano modificado",

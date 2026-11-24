@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 import ezdxf
@@ -12,11 +11,30 @@ from src.cad.dxf_base import (
     CAPA_TEXTOS,
     UNIDADES_METROS,
 )
+from src.utils.texto import normalizar_nombre
+
+
+TOLERANCIA = 1e-6
+PASO_BUSQUEDA_M = 0.1
 
 
 # ==========================================
 # 1. FUNCIONES AUXILIARES
 # ==========================================
+
+def _xdata(entidad):
+
+    if not entidad.has_xdata(APP_ID):
+        return None
+
+    datos = entidad.get_xdata(APP_ID)
+
+    # XDATA = [identificador, nombre] (ver registrar_metadatos).
+    if not datos or len(datos) < 2:
+        return None
+
+    return str(datos[0].value), str(datos[1].value)
+
 
 def obtener_nombre(entidad):
 
@@ -25,19 +43,20 @@ def obtener_nombre(entidad):
     en los metadatos XDATA.
     """
 
-    if not entidad.has_xdata(APP_ID):
-        return None
+    datos = _xdata(entidad)
 
-    datos = entidad.get_xdata(APP_ID)
+    return datos[1] if datos else None
 
-    if not datos:
-        return None
 
-    # XDATA = [identificador, nombre] (ver registrar_metadatos).
-    if len(datos) < 2:
-        return None
+def obtener_id(entidad):
 
-    return str(datos[1].value)
+    """
+    Recupera el identificador del ambiente (p. ej. dormitorio_2).
+    """
+
+    datos = _xdata(entidad)
+
+    return datos[0] if datos else None
 
 
 def obtener_poligono(entidad):
@@ -88,16 +107,13 @@ def obtener_ambientes(modelo):
 
         ambientes.append({
             "entidad": entidad,
+            "id": obtener_id(entidad),
             "nombre": nombre,
             "poligono": poligono
         })
 
     return ambientes
 
-
-# ==========================================
-# 2. BUSCAR EL TERRENO
-# ==========================================
 
 def obtener_terreno(modelo):
 
@@ -128,45 +144,124 @@ def obtener_terreno(modelo):
     )
 
 
-# ==========================================
-# 3. BUSCAR LA ETIQUETA DEL AMBIENTE
-# ==========================================
-
-def buscar_texto(modelo, nombre):
+def resolver_ambiente(ambientes, referencia):
 
     """
-    Encuentra la etiqueta de área ("20.00 m2") asociada al ambiente.
+    Encuentra un ambiente a partir de lo que escribio el usuario.
 
-    Cada ambiente tiene dos textos con los mismos metadatos: el
-    nombre y el área. Aquí se devuelve el del área, que es el que
-    cambia al editar la superficie.
+    Acepta el identificador ("dormitorio_2"), el nombre unico
+    ("sala"), o el nombre con numero ("dormitorio 2"). Ignora
+    mayusculas y tildes.
     """
 
-    coincidencias = []
+    clave = normalizar_nombre(referencia)
+    clave_id = clave.replace(" ", "_")
+
+    por_id = [
+        a for a in ambientes
+        if a["id"] and normalizar_nombre(a["id"]) == clave_id
+    ]
+
+    if len(por_id) == 1:
+        return por_id[0]
+
+    por_nombre = [
+        a for a in ambientes
+        if normalizar_nombre(a["nombre"]) == clave
+    ]
+
+    if len(por_nombre) == 1:
+        return por_nombre[0]
+
+    if len(por_nombre) > 1:
+        ids = ", ".join(a["id"] or a["nombre"] for a in por_nombre)
+        raise ValueError(
+            f"El nombre {referencia} es ambiguo. "
+            f"Indica cual de estos ambientes: {ids}."
+        )
+
+    raise ValueError(
+        f"No se encontro el ambiente: {referencia}."
+    )
+
+
+def buscar_textos(modelo, ambiente):
+
+    """
+    Devuelve las etiquetas (nombre y area) del ambiente,
+    identificadas por su id en los metadatos.
+    """
+
+    etiquetas = []
 
     for entidad in modelo.query("TEXT"):
 
         if entidad.dxf.layer != CAPA_TEXTOS:
             continue
 
-        nombre_texto = obtener_nombre(entidad)
+        if obtener_id(entidad) == ambiente["id"]:
+            etiquetas.append(entidad)
 
-        if not nombre_texto or nombre_texto.casefold() != nombre.casefold():
-            continue
+    return etiquetas
 
-        if entidad.dxf.text.strip().lower().endswith("m2"):
-            coincidencias.append(entidad)
 
-    if len(coincidencias) > 1:
-        raise ValueError(
-            f"Hay varias etiquetas de área asociadas a {nombre}."
+def _es_etiqueta_area(texto):
+    return texto.dxf.text.strip().lower().endswith("m2")
+
+
+def _comprobar_ubicacion(candidato, ambiente, ambientes, terreno):
+
+    """
+    Devuelve None si el poligono es valido, o un mensaje de error.
+    """
+
+    if not terreno.buffer(TOLERANCIA).covers(candidato):
+        return (
+            "La modificacion haria que el ambiente "
+            "salga de los limites del terreno."
         )
 
-    return coincidencias[0] if coincidencias else None
+    for otro in ambientes:
+
+        if otro is ambiente:
+            continue
+
+        if candidato.intersection(otro["poligono"]).area > TOLERANCIA:
+            return (
+                f"La modificacion se superpone con "
+                f"el ambiente {otro['nombre']}."
+            )
+
+    return None
+
+
+def _actualizar_poligono(ambiente, nuevo_poligono):
+
+    ambiente["entidad"].set_points(
+        list(nuevo_poligono.exterior.coords)[:-1],
+        format="xy"
+    )
+
+    ambiente["poligono"] = nuevo_poligono
+
+
+def _rectangulo_o_error(poligono):
+
+    xmin, ymin, xmax, ymax = poligono.bounds
+
+    rectangulo = box(xmin, ymin, xmax, ymax)
+
+    if poligono.symmetric_difference(rectangulo).area > TOLERANCIA:
+        raise ValueError(
+            "Por ahora solo se pueden modificar "
+            "habitaciones rectangulares."
+        )
+
+    return xmin, ymin, xmax, ymax
 
 
 # ==========================================
-# 4. MODIFICAR EL AREA DE UNA HABITACION
+# 2. MODIFICAR EL AREA DE UNA HABITACION
 # ==========================================
 
 def modificar_area(
@@ -182,57 +277,23 @@ def modificar_area(
     conservando su centro y proporcion.
     """
 
-    coincidencias = [
-        ambiente
-        for ambiente in ambientes
-        if ambiente["nombre"].casefold() == nombre.casefold()
-    ]
+    ambiente = resolver_ambiente(ambientes, nombre)
 
-    if len(coincidencias) == 0:
-        raise ValueError(
-            f"No se encontro el ambiente: {nombre}."
-        )
-
-    if len(coincidencias) > 1:
-        raise ValueError(
-            f"El nombre {nombre} es ambiguo. "
-            "Hay mas de un ambiente con ese nombre."
-        )
-
-    ambiente = coincidencias[0]
-
-    entidad = ambiente["entidad"]
     poligono = ambiente["poligono"]
 
-    # Obtener los limites del ambiente
-    xmin, ymin, xmax, ymax = poligono.bounds
-
-    ancho = xmax - xmin
-    alto = ymax - ymin
-
-    # Verificar que sea un rectangulo alineado
-    rectangulo = box(xmin, ymin, xmax, ymax)
-
-    if poligono.symmetric_difference(rectangulo).area > 0.000001:
-        raise ValueError(
-            "Por ahora solo se pueden modificar "
-            "habitaciones rectangulares."
-        )
-
-    # Calcular el factor de escala
-    area_actual = poligono.area
+    xmin, ymin, xmax, ymax = _rectangulo_o_error(poligono)
 
     if area_objetivo <= 0:
         raise ValueError(
             "El area objetivo debe ser mayor que cero."
         )
 
+    area_actual = poligono.area
     factor = (area_objetivo / area_actual) ** 0.5
 
-    nuevo_ancho = ancho * factor
-    nuevo_alto = alto * factor
+    nuevo_ancho = (xmax - xmin) * factor
+    nuevo_alto = (ymax - ymin) * factor
 
-    # Mantener el centro de la habitacion
     centro = poligono.centroid
 
     nuevo_poligono = box(
@@ -242,57 +303,200 @@ def modificar_area(
         centro.y + nuevo_alto / 2
     )
 
-    # Comprobar que permanezca dentro del terreno
-    if not terreno.covers(nuevo_poligono):
-        raise ValueError(
-            "La modificacion haria que el ambiente "
-            "salga de los limites del terreno."
-        )
-
-    # Comprobar que no invada otros ambientes
-    for otro in ambientes:
-
-        if otro["entidad"].dxf.handle == entidad.dxf.handle:
-            continue
-
-        interseccion = nuevo_poligono.intersection(
-            otro["poligono"]
-        )
-
-        if interseccion.area > 0.000001:
-            raise ValueError(
-                f"La modificacion se superpone con "
-                f"el ambiente {otro['nombre']}."
-            )
-
-    # Actualizar los vertices de la polilinea
-    nuevos_puntos = list(nuevo_poligono.exterior.coords)[:-1]
-
-    entidad.set_points(
-        nuevos_puntos,
-        format="xy"
+    error = _comprobar_ubicacion(
+        nuevo_poligono, ambiente, ambientes, terreno
     )
 
-    # Actualizar la etiqueta de area. El centro se conserva, asi que
-    # las etiquetas no necesitan moverse.
-    texto = buscar_texto(modelo, nombre)
+    if error:
+        raise ValueError(error)
 
-    if texto is not None:
-        texto.dxf.text = f"{nuevo_poligono.area:.2f} m2"
+    _actualizar_poligono(ambiente, nuevo_poligono)
 
-    # Actualizar geometria en memoria
-    ambiente["poligono"] = nuevo_poligono
+    # El centro se conserva: solo cambia el texto del area.
+    for texto in buscar_textos(modelo, ambiente):
+
+        if _es_etiqueta_area(texto):
+            texto.dxf.text = f"{nuevo_poligono.area:.2f} m2"
 
     return {
-        "ambiente": nombre,
+        "ambiente": ambiente["nombre"],
+        "id": ambiente["id"],
         "area_anterior": round(area_actual, 2),
         "area_nueva": round(nuevo_poligono.area, 2)
     }
 
 
 # ==========================================
-# 5. MOTOR PRINCIPAL DE EDICION
+# 3. MOVER UN AMBIENTE
 # ==========================================
+
+LADOS_POR_RELACION = {
+    "izquierda_de": ("izquierda",),
+    "derecha_de": ("derecha",),
+    "arriba_de": ("arriba",),
+    "abajo_de": ("abajo",),
+    # Contacto en cualquier lado; se elige el mas cercano.
+    "junto_a": ("izquierda", "derecha", "arriba", "abajo"),
+    "cerca_de": ("izquierda", "derecha", "arriba", "abajo"),
+}
+
+
+def _candidatos_junto_a(rect_ref, ancho, alto, lado):
+
+    """
+    Posiciones (xmin, ymin) del ambiente pegado a `rect_ref`
+    por el lado indicado, recorriendo toda la arista compartida.
+    """
+
+    rx0, ry0, rx1, ry1 = rect_ref
+
+    if lado in ("izquierda", "derecha"):
+
+        x = rx0 - ancho if lado == "izquierda" else rx1
+
+        inicio = ry0 - alto + PASO_BUSQUEDA_M
+        fin = ry1 - PASO_BUSQUEDA_M
+
+        pasos = int((fin - inicio) / PASO_BUSQUEDA_M) + 1
+
+        return [
+            (x, inicio + i * PASO_BUSQUEDA_M)
+            for i in range(max(pasos, 1))
+        ]
+
+    y = ry0 - alto if lado == "abajo" else ry1
+
+    inicio = rx0 - ancho + PASO_BUSQUEDA_M
+    fin = rx1 - PASO_BUSQUEDA_M
+
+    pasos = int((fin - inicio) / PASO_BUSQUEDA_M) + 1
+
+    return [
+        (inicio + i * PASO_BUSQUEDA_M, y)
+        for i in range(max(pasos, 1))
+    ]
+
+
+def mover_ambiente(
+    modelo,
+    ambientes,
+    terreno,
+    nombre,
+    referencia,
+    relacion
+):
+
+    """
+    Mueve una habitacion rectangular para que quede pegada a otra
+    (izquierda, derecha, arriba o abajo de ella). Conserva sus
+    dimensiones. Elige la posicion valida mas cercana a la actual
+    que no salga del terreno ni se superponga con otros ambientes.
+    """
+
+    if relacion == "lejos_de":
+        raise NotImplementedError(
+            "La relacion 'lejos_de' no esta implementada."
+        )
+
+    if relacion not in LADOS_POR_RELACION:
+        raise ValueError(f"Relacion espacial desconocida: {relacion}.")
+
+    ambiente = resolver_ambiente(ambientes, nombre)
+    ambiente_ref = resolver_ambiente(ambientes, referencia)
+
+    if ambiente is ambiente_ref:
+        raise ValueError(
+            "Un ambiente no puede moverse respecto a si mismo."
+        )
+
+    xmin, ymin, xmax, ymax = _rectangulo_o_error(ambiente["poligono"])
+    rect_ref = _rectangulo_o_error(ambiente_ref["poligono"])
+
+    ancho = xmax - xmin
+    alto = ymax - ymin
+
+    centro_actual = ambiente["poligono"].centroid
+
+    mejor = None
+    ultimo_error = None
+
+    for lado in LADOS_POR_RELACION[relacion]:
+
+        for x0, y0 in _candidatos_junto_a(rect_ref, ancho, alto, lado):
+
+            candidato = box(x0, y0, x0 + ancho, y0 + alto)
+
+            error = _comprobar_ubicacion(
+                candidato, ambiente, ambientes, terreno
+            )
+
+            if error:
+                ultimo_error = error
+                continue
+
+            distancia = candidato.centroid.distance(centro_actual)
+
+            if mejor is None or distancia < mejor[0]:
+                mejor = (distancia, candidato)
+
+    if mejor is None:
+        raise ValueError(
+            f"No hay espacio libre para colocar "
+            f"{ambiente['nombre']} {relacion.replace('_', ' ')} "
+            f"{ambiente_ref['nombre']}"
+            + (f" ({ultimo_error})" if ultimo_error else ".")
+        )
+
+    nuevo_poligono = mejor[1]
+
+    desplazamiento_x = nuevo_poligono.bounds[0] - xmin
+    desplazamiento_y = nuevo_poligono.bounds[1] - ymin
+
+    _actualizar_poligono(ambiente, nuevo_poligono)
+
+    for texto in buscar_textos(modelo, ambiente):
+
+        x, y, z = texto.dxf.insert
+
+        texto.dxf.insert = (
+            x + desplazamiento_x,
+            y + desplazamiento_y,
+            z
+        )
+
+        # Los textos centrados usan tambien align_point.
+        if texto.dxf.hasattr("align_point"):
+
+            ax, ay, az = texto.dxf.align_point
+
+            texto.dxf.align_point = (
+                ax + desplazamiento_x,
+                ay + desplazamiento_y,
+                az
+            )
+
+    return {
+        "ambiente": ambiente["nombre"],
+        "id": ambiente["id"],
+        "referencia": ambiente_ref["nombre"],
+        "relacion": relacion,
+        "desplazamiento": (
+            round(desplazamiento_x, 2),
+            round(desplazamiento_y, 2),
+        ),
+    }
+
+
+# ==========================================
+# 4. MOTOR PRINCIPAL DE EDICION
+# ==========================================
+
+ADVERTENCIA_ELEMENTOS = (
+    "Los muros, puertas, ventanas y mobiliario del DXF no se "
+    "recalculan al editar ambientes; regenera el plano para "
+    "actualizarlos."
+)
+
 
 def editar_dxf(ruta_entrada, ruta_salida, solicitud):
 
@@ -317,7 +521,6 @@ def editar_dxf(ruta_entrada, ruta_salida, solicitud):
 
     documento = ezdxf.readfile(str(entrada))
 
-    # Comprobar unidades: 6 corresponde a metros
     unidades = documento.header.get("$INSUNITS", 0)
 
     if unidades != UNIDADES_METROS:
@@ -343,34 +546,39 @@ def editar_dxf(ruta_entrada, ruta_salida, solicitud):
 
         if operacion.tipo == "modificar_area":
 
-            resultado = modificar_area(
+            resultados.append(modificar_area(
                 modelo=modelo,
                 ambientes=ambientes,
                 terreno=terreno,
                 nombre=operacion.ambiente,
                 area_objetivo=operacion.area_objetivo
-            )
-
-            resultados.append(resultado)
+            ))
 
         elif operacion.tipo == "mover_ambiente":
 
-            raise NotImplementedError(
-                "La operacion de mover ambientes "
-                "todavia no esta implementada."
-            )
+            resultados.append(mover_ambiente(
+                modelo=modelo,
+                ambientes=ambientes,
+                terreno=terreno,
+                nombre=operacion.ambiente,
+                referencia=operacion.referencia,
+                relacion=operacion.relacion
+            ))
 
-    # Crear carpeta de salida
     salida.parent.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    # Guardar una nueva version del plano
     documento.saveas(str(salida))
+
+    observaciones = list(solicitud.observaciones)
+
+    if resultados and ADVERTENCIA_ELEMENTOS not in observaciones:
+        observaciones.append(ADVERTENCIA_ELEMENTOS)
 
     return {
         "archivo": str(salida),
         "modificaciones": resultados,
-        "observaciones": solicitud.observaciones
+        "observaciones": observaciones
     }

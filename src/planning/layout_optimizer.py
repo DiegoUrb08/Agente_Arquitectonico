@@ -21,36 +21,16 @@ from src.planning.restricciones import agregar_adyacencia_fisica  # noqa: F401
 from src.utils.texto import normalizar_nombre
 
 
+PESO_RELACIONES_USUARIO = 3
+PESO_ZONIFICACION_SOCIAL = 1
+
+
 # ============================================================
-# 4. OPTIMIZACIÓN DE LA DISTRIBUCIÓN
+# 1. VALIDACIONES DE ENTRADA
 # ============================================================
 
-def optimizar_distribucion(requerimientos):
-    """
-    Genera una distribución espacial preliminar
-    mediante programación por restricciones.
-
-    Objetivos:
-
-    1. Aproximar las superficies a sus áreas objetivo.
-    2. Cumplir las relaciones de adyacencia.
-    3. Minimizar las distancias entre ambientes relacionados.
-    4. Agrupar los ambientes sociales.
-    5. Garantizar conectividad global entre ambientes.
-
-    Restricciones:
-
-    - Ambientes dentro del terreno.
-    - Sin superposición entre ambientes.
-    - Respeto de las áreas mínimas.
-    - Control de proporciones geométricas.
-    - Adyacencia física cuando se solicita.
-    - Conectividad global de la distribución.
-    """
-
-    # --------------------------------------------------------
-    # 4.1. VALIDACIÓN DEL TERRENO
-    # --------------------------------------------------------
+def _validar_terreno(requerimientos):
+    """Devuelve (ancho, largo) del terreno en dm, validado."""
 
     ancho_terreno = requerimientos.ancho_terreno_m
     largo_terreno = requerimientos.largo_terreno_m
@@ -65,32 +45,20 @@ def optimizar_distribucion(requerimientos):
             "Las dimensiones del terreno deben ser mayores que cero."
         )
 
-    ancho_terreno_dm = math.floor(
-        ancho_terreno * 10
-    )
+    ancho_dm = math.floor(ancho_terreno * 10)
+    largo_dm = math.floor(largo_terreno * 10)
 
-    largo_terreno_dm = math.floor(
-        largo_terreno * 10
-    )
-
-    if (
-        ancho_terreno_dm < MIN_LADO_DM
-        or largo_terreno_dm < MIN_LADO_DM
-    ):
+    if ancho_dm < MIN_LADO_DM or largo_dm < MIN_LADO_DM:
         raise ValueError(
             "El terreno es demasiado pequeño "
             "para las dimensiones mínimas."
         )
 
-    area_terreno_dm2 = (
-        ancho_terreno_dm * largo_terreno_dm
-    )
+    return ancho_dm, largo_dm
 
-    # --------------------------------------------------------
-    # 4.2. CONSTRUCCIÓN DEL GRAFO ESPACIAL
-    # --------------------------------------------------------
 
-    grafo = construir_grafo(requerimientos)
+def _validar_grafo(grafo):
+    """Comprueba nodos, identificadores y relaciones."""
 
     nodos = grafo["nodos"]
     relaciones = grafo["relaciones"]
@@ -100,66 +68,81 @@ def optimizar_distribucion(requerimientos):
             "No existen ambientes para distribuir."
         )
 
-    identificadores = [
-        nodo["id"]
-        for nodo in nodos
-    ]
+    identificadores = [nodo["id"] for nodo in nodos]
 
     if len(identificadores) != len(set(identificadores)):
         raise ValueError(
             "Existen identificadores duplicados."
         )
 
-    identificadores_validos = set(identificadores)
-
-    # --------------------------------------------------------
-    # VALIDAR RELACIONES
-    # --------------------------------------------------------
+    validos = set(identificadores)
 
     for relacion in relaciones:
-
         for par in relacion["pares"]:
 
             origen, destino = par
 
-            if (
-                origen not in identificadores_validos
-                or destino not in identificadores_validos
-            ):
+            if origen not in validos or destino not in validos:
                 raise ValueError(
                     f"La relación {par} hace referencia "
                     "a un ambiente inexistente."
                 )
 
-    # --------------------------------------------------------
-    # 4.3. INICIALIZACIÓN DEL MODELO
-    # --------------------------------------------------------
 
-    modelo = cp_model.CpModel()
+# ============================================================
+# 2. VARIABLES Y RESTRICCIONES DEL MODELO
+# ============================================================
+
+def _centro_doble(datos):
+    """Centro del ambiente multiplicado por 2 (evita fracciones)."""
+
+    return (
+        datos["x"] * 2 + datos["ancho"],
+        datos["y"] * 2 + datos["largo"],
+    )
+
+
+def _distancia_manhattan(
+    modelo, datos_a, datos_b, ancho_terreno_dm, largo_terreno_dm,
+    nombre_x, nombre_y
+):
+    """Variables |dx| y |dy| entre los centros de dos ambientes."""
+
+    centro_x_a, centro_y_a = _centro_doble(datos_a)
+    centro_x_b, centro_y_b = _centro_doble(datos_b)
+
+    distancia_x = modelo.NewIntVar(0, ancho_terreno_dm * 2, nombre_x)
+    distancia_y = modelo.NewIntVar(0, largo_terreno_dm * 2, nombre_y)
+
+    modelo.AddAbsEquality(distancia_x, centro_x_a - centro_x_b)
+    modelo.AddAbsEquality(distancia_y, centro_y_a - centro_y_b)
+
+    return distancia_x, distancia_y
+
+
+def _crear_variables_ambientes(
+    modelo, nodos, ancho_terreno_dm, largo_terreno_dm
+):
+    """
+    Crea posición, dimensiones, área y límites de cada ambiente.
+
+    Devuelve (variables, intervalos_x, intervalos_y, variables_area).
+    """
+
+    area_terreno_dm2 = ancho_terreno_dm * largo_terreno_dm
 
     variables = {}
-
     intervalos_x = []
     intervalos_y = []
-
     variables_area = []
-    desviaciones = []
-
-    # --------------------------------------------------------
-    # 4.4. CREACIÓN DE VARIABLES Y RESTRICCIONES
-    # --------------------------------------------------------
 
     for nodo in nodos:
 
         identificador = nodo["id"]
 
-        nombre_ambiente = normalizar_nombre(
-            nodo["nombre"]
-        )
+        nombre_ambiente = normalizar_nombre(nodo["nombre"])
 
-        area_minima, area_objetivo = obtener_areas_ambiente(
-            nodo
-        )
+        area_minima, area_objetivo = obtener_areas_ambiente(nodo)
 
         if area_minima > area_terreno_dm2:
             raise ValueError(
@@ -167,131 +150,53 @@ def optimizar_distribucion(requerimientos):
                 "supera la superficie del terreno."
             )
 
-        # --------------------------------------------
-        # POSICIÓN DEL AMBIENTE
-        # --------------------------------------------
-
-        x = modelo.NewIntVar(
-            0,
-            ancho_terreno_dm,
-            f"x_{identificador}"
-        )
-
-        y = modelo.NewIntVar(
-            0,
-            largo_terreno_dm,
-            f"y_{identificador}"
-        )
-
-        # --------------------------------------------
-        # DIMENSIONES DEL AMBIENTE
-        # --------------------------------------------
+        x = modelo.NewIntVar(0, ancho_terreno_dm, f"x_{identificador}")
+        y = modelo.NewIntVar(0, largo_terreno_dm, f"y_{identificador}")
 
         ancho = modelo.NewIntVar(
-            MIN_LADO_DM,
-            ancho_terreno_dm,
-            f"ancho_{identificador}"
+            MIN_LADO_DM, ancho_terreno_dm, f"ancho_{identificador}"
         )
-
         largo = modelo.NewIntVar(
-            MIN_LADO_DM,
-            largo_terreno_dm,
-            f"largo_{identificador}"
+            MIN_LADO_DM, largo_terreno_dm, f"largo_{identificador}"
         )
 
-        # --------------------------------------------
-        # RESTRICCIÓN DE PROPORCIONES
-        # --------------------------------------------
-
-        proporcion_maxima = obtener_proporcion_maxima(
-            nombre_ambiente
-        )
-
+        # Proporción máxima entre lados.
         proporcion_entera = round(
-            proporcion_maxima * 10
+            obtener_proporcion_maxima(nombre_ambiente) * 10
         )
 
-        modelo.Add(
-            ancho * 10 <= largo * proporcion_entera
-        )
+        modelo.Add(ancho * 10 <= largo * proporcion_entera)
+        modelo.Add(largo * 10 <= ancho * proporcion_entera)
 
-        modelo.Add(
-            largo * 10 <= ancho * proporcion_entera
-        )
-
-        # --------------------------------------------
-        # RESTRICCIÓN DE ÁREA
-        # --------------------------------------------
-
+        # Área = ancho x largo, con el mínimo como cota inferior.
         area = modelo.NewIntVar(
-            area_minima,
-            area_terreno_dm2,
-            f"area_{identificador}"
+            area_minima, area_terreno_dm2, f"area_{identificador}"
         )
 
-        modelo.AddMultiplicationEquality(
-            area,
-            [ancho, largo]
-        )
+        modelo.AddMultiplicationEquality(area, [ancho, largo])
 
         variables_area.append(area)
 
-        # --------------------------------------------
-        # LÍMITES DEL TERRENO
-        # --------------------------------------------
-
+        # Límites del terreno.
         fin_x = modelo.NewIntVar(
-            0,
-            ancho_terreno_dm,
-            f"fin_x_{identificador}"
+            0, ancho_terreno_dm, f"fin_x_{identificador}"
         )
-
         fin_y = modelo.NewIntVar(
-            0,
-            largo_terreno_dm,
-            f"fin_y_{identificador}"
+            0, largo_terreno_dm, f"fin_y_{identificador}"
         )
 
-        modelo.Add(
-            fin_x == x + ancho
-        )
+        modelo.Add(fin_x == x + ancho)
+        modelo.Add(fin_y == y + largo)
+        modelo.Add(fin_x <= ancho_terreno_dm)
+        modelo.Add(fin_y <= largo_terreno_dm)
 
-        modelo.Add(
-            fin_y == y + largo
-        )
-
-        modelo.Add(
-            fin_x <= ancho_terreno_dm
-        )
-
-        modelo.Add(
-            fin_y <= largo_terreno_dm
-        )
-
-        # --------------------------------------------
-        # INTERVALOS PARA EVITAR SUPERPOSICIONES
-        # --------------------------------------------
-
-        intervalo_x = modelo.NewIntervalVar(
-            x,
-            ancho,
-            fin_x,
-            f"intervalo_x_{identificador}"
-        )
-
-        intervalo_y = modelo.NewIntervalVar(
-            y,
-            largo,
-            fin_y,
-            f"intervalo_y_{identificador}"
-        )
-
-        intervalos_x.append(intervalo_x)
-        intervalos_y.append(intervalo_y)
-
-        # --------------------------------------------
-        # GUARDAR VARIABLES
-        # --------------------------------------------
+        # Intervalos para la no superposición.
+        intervalos_x.append(modelo.NewIntervalVar(
+            x, ancho, fin_x, f"intervalo_x_{identificador}"
+        ))
+        intervalos_y.append(modelo.NewIntervalVar(
+            y, largo, fin_y, f"intervalo_y_{identificador}"
+        ))
 
         variables[identificador] = {
             "x": x,
@@ -304,261 +209,143 @@ def optimizar_distribucion(requerimientos):
             "area_objetivo": area_objetivo,
         }
 
-    # --------------------------------------------------------
-    # 4.5. AGRUPACIÓN DE AMBIENTES SOCIALES
-    # --------------------------------------------------------
+    return variables, intervalos_x, intervalos_y, variables_area
 
-    proximidad_social = []
-    ambientes_sociales = []
 
-    for nodo in nodos:
+def _proximidad_ambientes_sociales(
+    modelo, nodos, variables, ancho_terreno_dm, largo_terreno_dm
+):
+    """Distancias entre ambientes sociales (para agruparlos)."""
 
-        nombre = normalizar_nombre(
-            nodo["nombre"]
-        )
+    sociales = [
+        variables[nodo["id"]]
+        for nodo in nodos
+        if normalizar_nombre(nodo["nombre"]) in AMBIENTES_SOCIALES
+    ]
 
-        if nombre in AMBIENTES_SOCIALES:
+    proximidad = []
 
-            ambientes_sociales.append(
-                variables[nodo["id"]]
+    for i in range(len(sociales)):
+        for j in range(i + 1, len(sociales)):
+
+            distancia_x, distancia_y = _distancia_manhattan(
+                modelo, sociales[i], sociales[j],
+                ancho_terreno_dm, largo_terreno_dm,
+                f"distancia_social_x_{i}_{j}",
+                f"distancia_social_y_{i}_{j}",
             )
 
-    # Calcular distancias entre centros de ambientes sociales.
-    for i in range(len(ambientes_sociales)):
+            proximidad.append(distancia_x + distancia_y)
 
-        for j in range(i + 1, len(ambientes_sociales)):
+    return proximidad
 
-            ambiente_a = ambientes_sociales[i]
-            ambiente_b = ambientes_sociales[j]
 
-            centro_x_a = (
-                ambiente_a["x"] * 2
-                + ambiente_a["ancho"]
-            )
+def _adyacencias_globales(
+    modelo, nodos, variables, ancho_terreno_dm, largo_terreno_dm
+):
+    """Una variable de adyacencia física por cada pareja de ambientes."""
 
-            centro_y_a = (
-                ambiente_a["y"] * 2
-                + ambiente_a["largo"]
-            )
-
-            centro_x_b = (
-                ambiente_b["x"] * 2
-                + ambiente_b["ancho"]
-            )
-
-            centro_y_b = (
-                ambiente_b["y"] * 2
-                + ambiente_b["largo"]
-            )
-
-            distancia_x = modelo.NewIntVar(
-                0,
-                ancho_terreno_dm * 2,
-                f"distancia_social_x_{i}_{j}"
-            )
-
-            distancia_y = modelo.NewIntVar(
-                0,
-                largo_terreno_dm * 2,
-                f"distancia_social_y_{i}_{j}"
-            )
-
-            modelo.AddAbsEquality(
-                distancia_x,
-                centro_x_a - centro_x_b
-            )
-
-            modelo.AddAbsEquality(
-                distancia_y,
-                centro_y_a - centro_y_b
-            )
-
-            proximidad_social.append(
-                distancia_x + distancia_y
-            )
-
-    # --------------------------------------------------------
-    # 4.6. RESTRICCIÓN DE NO SUPERPOSICIÓN
-    # --------------------------------------------------------
-
-    modelo.AddNoOverlap2D(
-        intervalos_x,
-        intervalos_y
-    )
-
-    # --------------------------------------------------------
-    # 4.7. ADYACENCIA FÍSICA ENTRE TODOS LOS AMBIENTES
-    # --------------------------------------------------------
-
-    adyacencias_fisicas = {}
-
-    # Crear una variable de adyacencia para cada pareja
-    # posible de ambientes.
+    adyacencias = {}
 
     for i in range(len(nodos)):
-
         for j in range(i + 1, len(nodos)):
 
-            identificador_a = nodos[i]["id"]
-            identificador_b = nodos[j]["id"]
+            id_a = nodos[i]["id"]
+            id_b = nodos[j]["id"]
 
-            clave = tuple(sorted((
-                identificador_a,
-                identificador_b
-            )))
-
-            adyacente = agregar_adyacencia_fisica(
-                modelo=modelo,
-                ambiente_a=variables[identificador_a],
-                ambiente_b=variables[identificador_b],
-                identificador=f"global_{i}_{j}",
-                ancho_terreno_dm=ancho_terreno_dm,
-                largo_terreno_dm=largo_terreno_dm
+            adyacencias[tuple(sorted((id_a, id_b)))] = (
+                agregar_adyacencia_fisica(
+                    modelo=modelo,
+                    ambiente_a=variables[id_a],
+                    ambiente_b=variables[id_b],
+                    identificador=f"global_{i}_{j}",
+                    ancho_terreno_dm=ancho_terreno_dm,
+                    largo_terreno_dm=largo_terreno_dm,
+                )
             )
 
-            adyacencias_fisicas[clave] = adyacente
+    return adyacencias
 
-    # --------------------------------------------------------
-    # 4.7.1. CONECTIVIDAD GLOBAL MEDIANTE FLUJO
-    # --------------------------------------------------------
 
-    cantidad_ambientes = len(nodos)
+def _conectividad_global(modelo, nodos, adyacencias):
+    """
+    Garantiza que todos los ambientes formen una sola red mediante
+    un flujo desde el primer ambiente (raíz) que solo circula por
+    pares físicamente adyacentes.
+    """
 
-    if cantidad_ambientes > 1:
+    cantidad = len(nodos)
 
-        # El primer ambiente funciona como raíz.
-        indice_raiz = 0
+    if cantidad <= 1:
+        return
 
-        capacidad_flujo = cantidad_ambientes - 1
+    capacidad = cantidad - 1
 
-        # Registrar flujos entrantes y salientes.
-        flujos_salientes = {
-            nodo["id"]: []
-            for nodo in nodos
-        }
+    salientes = {nodo["id"]: [] for nodo in nodos}
+    entrantes = {nodo["id"]: [] for nodo in nodos}
 
-        flujos_entrantes = {
-            nodo["id"]: []
-            for nodo in nodos
-        }
+    for i in range(cantidad):
+        for j in range(i + 1, cantidad):
 
-        # Crear flujos dirigidos para cada pareja.
-        for i in range(cantidad_ambientes):
+            id_a = nodos[i]["id"]
+            id_b = nodos[j]["id"]
 
-            for j in range(i + 1, cantidad_ambientes):
+            adyacente = adyacencias[tuple(sorted((id_a, id_b)))]
 
-                id_a = nodos[i]["id"]
-                id_b = nodos[j]["id"]
+            flujo_ab = modelo.NewIntVar(0, capacidad, f"flujo_{i}_{j}")
+            flujo_ba = modelo.NewIntVar(0, capacidad, f"flujo_{j}_{i}")
 
-                clave = tuple(sorted((id_a, id_b)))
+            modelo.Add(flujo_ab <= capacidad * adyacente)
+            modelo.Add(flujo_ba <= capacidad * adyacente)
 
-                adyacente = adyacencias_fisicas[clave]
+            salientes[id_a].append(flujo_ab)
+            entrantes[id_b].append(flujo_ab)
 
-                # Flujo de A hacia B.
-                flujo_ab = modelo.NewIntVar(
-                    0,
-                    capacidad_flujo,
-                    f"flujo_{i}_{j}"
-                )
+            salientes[id_b].append(flujo_ba)
+            entrantes[id_a].append(flujo_ba)
 
-                # Flujo de B hacia A.
-                flujo_ba = modelo.NewIntVar(
-                    0,
-                    capacidad_flujo,
-                    f"flujo_{j}_{i}"
-                )
+    for indice, nodo in enumerate(nodos):
 
-                # Solo puede circular flujo si existe
-                # adyacencia física entre ambos ambientes.
-                modelo.Add(
-                    flujo_ab <= capacidad_flujo * adyacente
-                )
+        identificador = nodo["id"]
 
-                modelo.Add(
-                    flujo_ba <= capacidad_flujo * adyacente
-                )
+        flujo_neto = (
+            sum(salientes[identificador])
+            - sum(entrantes[identificador])
+        )
 
-                # Registrar los flujos.
-                flujos_salientes[id_a].append(flujo_ab)
-                flujos_entrantes[id_b].append(flujo_ab)
+        # La raíz reparte una unidad a cada otro ambiente.
+        if indice == 0:
+            modelo.Add(flujo_neto == capacidad)
+        else:
+            modelo.Add(flujo_neto == -1)
 
-                flujos_salientes[id_b].append(flujo_ba)
-                flujos_entrantes[id_a].append(flujo_ba)
 
-        # ----------------------------------------------------
-        # CONSERVACIÓN DEL FLUJO
-        # ----------------------------------------------------
+def _relaciones_usuario(modelo, relaciones, adyacencias):
+    """Impone las adyacencias pedidas por el usuario."""
 
-        for indice, nodo in enumerate(nodos):
-
-            identificador = nodo["id"]
-
-            flujo_neto = (
-                sum(flujos_salientes[identificador])
-                -
-                sum(flujos_entrantes[identificador])
-            )
-
-            if indice == indice_raiz:
-
-                # La raíz distribuye una unidad de flujo
-                # a cada uno de los demás ambientes.
-                modelo.Add(
-                    flujo_neto == capacidad_flujo
-                )
-
-            else:
-
-                # Cada ambiente recibe una unidad neta.
-                modelo.Add(
-                    flujo_neto == -1
-                )
-
-    # --------------------------------------------------------
-    # 4.7.2. CUMPLIMIENTO DE RELACIONES DEL USUARIO
-    # --------------------------------------------------------
-
-    for indice_relacion, relacion in enumerate(relaciones):
+    for relacion in relaciones:
 
         modo = relacion["modo"]
-        pares = relacion["pares"]
 
         adyacencias_pares = []
 
-        for par in pares:
+        for id_a, id_b in relacion["pares"]:
 
-            identificador_a, identificador_b = par
-
-            if identificador_a == identificador_b:
+            if id_a == id_b:
                 raise ValueError(
                     "Un ambiente no puede establecer "
                     "una relación de adyacencia consigo mismo."
                 )
 
-            clave = tuple(sorted((
-                identificador_a,
-                identificador_b
-            )))
+            adyacencias_pares.append(
+                adyacencias[tuple(sorted((id_a, id_b)))]
+            )
 
-            adyacente = adyacencias_fisicas[clave]
-
-            adyacencias_pares.append(adyacente)
-
-        # --------------------------------------------
-        # MODO: TODOS
-        # --------------------------------------------
-
-        if modo == "todos":
+        # "correspondiente" ya viene emparejado desde el grafo.
+        if modo in ("todos", "correspondiente"):
 
             for adyacente in adyacencias_pares:
-
-                modelo.Add(
-                    adyacente == 1
-                )
-
-        # --------------------------------------------
-        # MODO: AL MENOS UNO
-        # --------------------------------------------
+                modelo.Add(adyacente == 1)
 
         elif modo == "al_menos_uno":
 
@@ -568,46 +355,18 @@ def optimizar_distribucion(requerimientos):
                     "no contiene parejas posibles."
                 )
 
-            modelo.AddBoolOr(
-                adyacencias_pares
-            )
-
-        # --------------------------------------------
-        # MODO: CORRESPONDIENTE
-        # --------------------------------------------
-
-        elif modo == "correspondiente":
-
-            for adyacente in adyacencias_pares:
-
-                modelo.Add(
-                    adyacente == 1
-                )
+            modelo.AddBoolOr(adyacencias_pares)
 
         else:
-
             raise ValueError(
                 f"Modo de adyacencia desconocido: {modo}"
             )
 
-    # --------------------------------------------------------
-    # 4.8. SUPERFICIE TOTAL OCUPADA
-    # --------------------------------------------------------
 
-    area_total = modelo.NewIntVar(
-        0,
-        area_terreno_dm2,
-        "area_total"
-    )
+def _desviaciones_de_area(modelo, nodos, variables, area_terreno_dm2):
+    """Variables |área - objetivo| de cada ambiente."""
 
-    modelo.Add(
-        area_total == sum(variables_area)
-    )
-
-    # --------------------------------------------------------
-    # 4.9. PRIMERA OPTIMIZACIÓN:
-    #      MINIMIZAR DESVIACIONES DE ÁREAS
-    # --------------------------------------------------------
+    desviaciones = []
 
     for nodo in nodos:
 
@@ -618,52 +377,159 @@ def optimizar_distribucion(requerimientos):
         area = datos["area"]
         objetivo = datos["area_objetivo"]
 
-        area_minima_dm2, _ = obtener_areas_ambiente(
-            nodo
-        )
-
-        desviacion_maxima = max(
-            abs(area_minima_dm2 - objetivo),
-            abs(area_terreno_dm2 - objetivo)
-        )
+        area_minima_dm2, _ = obtener_areas_ambiente(nodo)
 
         desviacion = modelo.NewIntVar(
             0,
-            desviacion_maxima,
-            f"desviacion_{identificador}"
+            max(
+                abs(area_minima_dm2 - objetivo),
+                abs(area_terreno_dm2 - objetivo),
+            ),
+            f"desviacion_{identificador}",
         )
 
-        modelo.AddAbsEquality(
-            desviacion,
-            area - objetivo
-        )
+        modelo.AddAbsEquality(desviacion, area - objetivo)
 
-        desviaciones.append(
-            desviacion
-        )
+        desviaciones.append(desviacion)
 
-    desviacion_total = sum(
-        desviaciones
-    )
+    return desviaciones
 
-    modelo.Minimize(
-        desviacion_total
-    )
 
+def _distancias_relaciones(
+    modelo, relaciones, variables, ancho_terreno_dm, largo_terreno_dm
+):
+    """
+    Distancias entre ambientes relacionados por el usuario.
+
+    Las relaciones "al_menos_uno" ya garantizan una conexión física,
+    por lo que no se acercan artificialmente todas sus combinaciones.
+    """
+
+    distancias = []
+
+    for indice_relacion, relacion in enumerate(relaciones):
+
+        if relacion["modo"] == "al_menos_uno":
+            continue
+
+        for indice_par, (origen, destino) in enumerate(relacion["pares"]):
+
+            distancias.extend(_distancia_manhattan(
+                modelo, variables[origen], variables[destino],
+                ancho_terreno_dm, largo_terreno_dm,
+                f"distancia_x_{indice_relacion}_{indice_par}",
+                f"distancia_y_{indice_relacion}_{indice_par}",
+            ))
+
+    return distancias
+
+
+def _resolver(modelo):
     solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = TIEMPO_MAXIMO_SEGUNDOS
+    estado = solver.Solve(modelo)
+    return solver, estado
 
-    solver.parameters.max_time_in_seconds = (
-        TIEMPO_MAXIMO_SEGUNDOS
+
+def _extraer_resultado(solver, nodos, variables):
+    """Convierte la solución (dm) a la lista de ambientes (m)."""
+
+    resultado = []
+
+    for nodo in nodos:
+
+        datos = variables[nodo["id"]]
+
+        resultado.append({
+            "id": nodo["id"],
+            "nombre": nodo["nombre"],
+
+            "x": solver.Value(datos["x"]) / 10,
+            "y": solver.Value(datos["y"]) / 10,
+
+            "ancho": solver.Value(datos["ancho"]) / 10,
+            "largo": solver.Value(datos["largo"]) / 10,
+
+            "area_m2": solver.Value(datos["area"]) / 100,
+            "area_objetivo_m2": datos["area_objetivo"] / 100,
+        })
+
+    return resultado
+
+
+# ============================================================
+# 3. OPTIMIZACIÓN DE LA DISTRIBUCIÓN
+# ============================================================
+
+def optimizar_distribucion(requerimientos):
+    """
+    Genera una distribución espacial preliminar
+    mediante programación por restricciones.
+
+    Objetivos (en dos fases, lexicográficos):
+
+    1. Aproximar las superficies a sus áreas objetivo.
+    2. Con esa desviación fija, minimizar las distancias entre
+       ambientes relacionados y agrupar los ambientes sociales.
+
+    Restricciones:
+
+    - Ambientes dentro del terreno.
+    - Sin superposición entre ambientes.
+    - Respeto de las áreas mínimas.
+    - Control de proporciones geométricas.
+    - Adyacencia física cuando se solicita.
+    - Conectividad global de la distribución.
+    """
+
+    ancho_terreno_dm, largo_terreno_dm = _validar_terreno(requerimientos)
+
+    area_terreno_dm2 = ancho_terreno_dm * largo_terreno_dm
+
+    grafo = construir_grafo(requerimientos)
+
+    _validar_grafo(grafo)
+
+    nodos = grafo["nodos"]
+    relaciones = grafo["relaciones"]
+
+    modelo = cp_model.CpModel()
+
+    # Variables y restricciones geométricas.
+    variables, intervalos_x, intervalos_y, variables_area = (
+        _crear_variables_ambientes(
+            modelo, nodos, ancho_terreno_dm, largo_terreno_dm
+        )
     )
 
-    estado = solver.Solve(
-        modelo
+    proximidad_social = _proximidad_ambientes_sociales(
+        modelo, nodos, variables, ancho_terreno_dm, largo_terreno_dm
     )
 
-    if estado not in (
-        cp_model.OPTIMAL,
-        cp_model.FEASIBLE
-    ):
+    modelo.AddNoOverlap2D(intervalos_x, intervalos_y)
+
+    # Adyacencia, conectividad y relaciones del usuario.
+    adyacencias = _adyacencias_globales(
+        modelo, nodos, variables, ancho_terreno_dm, largo_terreno_dm
+    )
+
+    _conectividad_global(modelo, nodos, adyacencias)
+
+    _relaciones_usuario(modelo, relaciones, adyacencias)
+
+    area_total = modelo.NewIntVar(0, area_terreno_dm2, "area_total")
+    modelo.Add(area_total == sum(variables_area))
+
+    # Fase 1: minimizar las desviaciones de área.
+    desviacion_total = sum(
+        _desviaciones_de_area(modelo, nodos, variables, area_terreno_dm2)
+    )
+
+    modelo.Minimize(desviacion_total)
+
+    solver, estado = _resolver(modelo)
+
+    if estado not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         raise ValueError(
             "No se encontró una distribución espacial factible. "
             "Comprueba las áreas solicitadas, las relaciones "
@@ -672,177 +538,24 @@ def optimizar_distribucion(requerimientos):
             "con la conectividad global."
         )
 
-    mejor_desviacion = solver.Value(
-        desviacion_total
+    # Fase 2: conservar la mejor desviación y minimizar distancias.
+    modelo.Add(desviacion_total == solver.Value(desviacion_total))
+
+    distancias = _distancias_relaciones(
+        modelo, relaciones, variables, ancho_terreno_dm, largo_terreno_dm
     )
 
-    # --------------------------------------------------------
-    # 4.10. SEGUNDA OPTIMIZACIÓN:
-    #       MINIMIZAR DISTANCIAS ESPACIALES
-    # --------------------------------------------------------
-
-    # Conservar la mejor desviación de superficies.
-    modelo.Add(
-        desviacion_total == mejor_desviacion
-    )
-
-    distancias = []
-
-    # --------------------------------------------------------
-    # DISTANCIAS ENTRE AMBIENTES RELACIONADOS
-    # --------------------------------------------------------
-
-    for indice_relacion, relacion in enumerate(relaciones):
-
-        # Las relaciones al_menos_uno ya garantizan
-        # una conexión física entre al menos una pareja.
-        # No es necesario acercar artificialmente
-        # todas las combinaciones posibles.
-
-        if relacion["modo"] == "al_menos_uno":
-            continue
-
-        for indice_par, par in enumerate(relacion["pares"]):
-
-            origen, destino = par
-
-            datos_origen = variables[origen]
-            datos_destino = variables[destino]
-
-            centro_x_origen = (
-                datos_origen["x"] * 2
-                + datos_origen["ancho"]
-            )
-
-            centro_y_origen = (
-                datos_origen["y"] * 2
-                + datos_origen["largo"]
-            )
-
-            centro_x_destino = (
-                datos_destino["x"] * 2
-                + datos_destino["ancho"]
-            )
-
-            centro_y_destino = (
-                datos_destino["y"] * 2
-                + datos_destino["largo"]
-            )
-
-            distancia_x = modelo.NewIntVar(
-                0,
-                ancho_terreno_dm * 2,
-                f"distancia_x_{indice_relacion}_{indice_par}"
-            )
-
-            distancia_y = modelo.NewIntVar(
-                0,
-                largo_terreno_dm * 2,
-                f"distancia_y_{indice_relacion}_{indice_par}"
-            )
-
-            modelo.AddAbsEquality(
-                distancia_x,
-                centro_x_origen - centro_x_destino
-            )
-
-            modelo.AddAbsEquality(
-                distancia_y,
-                centro_y_origen - centro_y_destino
-            )
-
-            distancias.extend([
-                distancia_x,
-                distancia_y
-            ])
-
-    # --------------------------------------------------------
-    # OBJETIVO DE PROXIMIDAD PONDERADA
-    # --------------------------------------------------------
-
-    PESO_RELACIONES_USUARIO = 3
-    PESO_ZONIFICACION_SOCIAL = 1
-
-    objetivo_proximidad = (
+    modelo.Minimize(
         PESO_RELACIONES_USUARIO * sum(distancias)
         + PESO_ZONIFICACION_SOCIAL * sum(proximidad_social)
     )
 
-    modelo.Minimize(
-        objetivo_proximidad
-    )
+    solver_final, estado_final = _resolver(modelo)
 
-    solver_final = cp_model.CpSolver()
-
-    solver_final.parameters.max_time_in_seconds = (
-        TIEMPO_MAXIMO_SEGUNDOS
-    )
-
-    estado_final = solver_final.Solve(
-        modelo
-    )
-
-    # Conservar la primera solución si la segunda
-    # no encuentra una solución factible.
-    if estado_final in (
-        cp_model.OPTIMAL,
-        cp_model.FEASIBLE
-    ):
+    # Si la segunda fase no mejora o no es factible, se conserva la primera.
+    if estado_final in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         solver_resultado = solver_final
     else:
         solver_resultado = solver
 
-    # --------------------------------------------------------
-    # 4.11. RECUPERACIÓN DE RESULTADOS
-    # --------------------------------------------------------
-
-    resultado = []
-
-    for nodo in nodos:
-
-        identificador = nodo["id"]
-
-        datos = variables[identificador]
-
-        x_dm = solver_resultado.Value(
-            datos["x"]
-        )
-
-        y_dm = solver_resultado.Value(
-            datos["y"]
-        )
-
-        ancho_dm = solver_resultado.Value(
-            datos["ancho"]
-        )
-
-        largo_dm = solver_resultado.Value(
-            datos["largo"]
-        )
-
-        area_dm2 = solver_resultado.Value(
-            datos["area"]
-        )
-
-        ambiente = {
-            "id": identificador,
-            "nombre": nodo["nombre"],
-
-            "x": x_dm / 10,
-            "y": y_dm / 10,
-
-            "ancho": ancho_dm / 10,
-            "largo": largo_dm / 10,
-
-            "area_m2": area_dm2 / 100,
-
-            "area_objetivo_m2": (
-                datos["area_objetivo"] / 100
-            ),
-        }
-
-        resultado.append(
-            ambiente
-        )
-
-    return resultado
+    return _extraer_resultado(solver_resultado, nodos, variables)
