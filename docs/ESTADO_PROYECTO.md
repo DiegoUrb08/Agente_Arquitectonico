@@ -106,7 +106,7 @@
 
 **Objetivo:** permitir que usuarios sin Ollama usen el agente **completamente gratis** (Groq) o con sus propias claves (Claude, OpenAI) o servidor local.
 
-### Fase 1: Abstracción de proveedores LLM (2 horas) — EN PROGRESO
+### Fase 1: Abstracción de proveedores LLM (2 horas) — ✅ COMPLETO
 - Crear `src/ai/providers/__init__.py` y base class `LLMProvider` (métodos `chat()`, propiedades `nombre`, `modelo`).
 - Implementar `GroqProvider` (Groq API, **default gratis, sin tarjeta**).
 - Implementar `OllamaProvider` (actual `ollama_client.py`, reutilizar lógica).
@@ -152,6 +152,29 @@
 - Rate limits generosos: 8,000 req/min.
 - Modelos open: Mixtral 8x7B (comparable a GPT-3.5), LLaMA 2 70B.
 
+## Ampliaciones implementadas (Fase 1: Multi-LLM)
+
+17. **Abstracción de proveedores LLM** (`src/ai/providers/`):
+    - Base class `LLMProvider` con interfaz `chat(messages, temperature, ...)`
+    - `GroqProvider` → Groq API (gratis, sin tarjeta, sin descargas)
+    - `OllamaProvider` → Ollama local o remoto
+    - `MockProvider` → tests sin dependencias externas
+    - Factory `get_provider()` lee `LLM_PROVIDER` env var (default: groq)
+
+18. **Configuración por ambiente** (`.env.example`, `python-dotenv`):
+    - `LLM_PROVIDER=groq|ollama|claude|openai|mock`
+    - `GROQ_API_KEY=gsk_...` (gratis signup en https://console.groq.com)
+    - `OLLAMA_HOST=http://localhost:11434` (opcional, fallback local)
+    - `app.py` carga `.env` al inicio
+
+19. **Tests multi-proveedor** (`tests/test_ai_providers.py`, 9 tests):
+    - MockProvider funciona sin API keys
+    - GroqProvider maneja falta de key con mensaje claro
+    - OllamaProvider se configura por host
+    - Factory devuelve el proveedor correcto
+
 ## Siguientes etapas
-1. ~~**Soporte LLM vía API**~~ **En progreso:** plan arriba.
-2. BIM export (IfcOpenShell o gbXML).
+1. Fase 2: Configuración de ambiente y secretos.
+2. Fase 3: Tests y CI multiproveedor.
+3. Fase 4: UI con selector de proveedor.
+4. BIM export (IfcOpenShell o gbXML).
