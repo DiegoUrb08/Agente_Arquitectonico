@@ -107,6 +107,25 @@ def test_nuevos_tipos_mobiliario_tienen_dimensiones():
         assert ancho > 0 and largo > 0
 
 
+def test_closet_recibe_armario():
+    geo = generar_geometrias(
+        [{"id": "closet_1", "nombre": "Closet", "x": 0, "y": 0, "ancho": 2.5, "largo": 2.5}],
+        10, 10,
+    )
+    r = amueblar_automaticamente(geo)
+    tipos = [m["tipo"] for m in r["mobiliario"]]
+    assert "armario" in tipos
+
+
+def test_escalera_no_recibe_mobiliario():
+    geo = generar_geometrias(
+        [{"id": "escalera_1", "nombre": "Escalera", "x": 0, "y": 0, "ancho": 2.5, "largo": 1.5}],
+        10, 10,
+    )
+    r = amueblar_automaticamente(geo)
+    assert r["cantidad"] == 0
+
+
 def test_ruido_de_coma_flotante_no_elimina_el_muro_compartido(tmp_path):
     # Caso real: 11.4 + 3.7 = 15.100000000000001 dejaba la puerta sin muro.
     dist = [

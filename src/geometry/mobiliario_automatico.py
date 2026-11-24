@@ -23,6 +23,7 @@ PLANTILLAS = {
     "oficina": [{"tipo": "escritorio"}],
     "lavanderia": [{"tipo": "lavadora"}, {"tipo": "secadora"}],
     "terraza": [{"tipo": "mesa_comedor", "centrado": True}],
+    "closet": [{"tipo": "armario"}],
 }
 
 

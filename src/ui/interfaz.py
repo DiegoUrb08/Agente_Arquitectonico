@@ -10,7 +10,12 @@ from src.ai.edit_interpreter import interpretar_edicion
 from src.ai.interpreter import interpretar_instruccion
 from src.ai.ollama_client import OllamaError
 from src.cad.dxf_reader import analizar_dxf
-from src.services.pipeline import editar_plano, generar_plano
+from src.services.pipeline import (
+    editar_plano,
+    generar_plano,
+    ResultadoPlano,
+    ResultadoPlanoMultipisos,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +152,28 @@ def mostrar_resultado_plano(resultado):
     c3.metric("Puertas procesadas", len(resultado.aberturas["puertas"]))
 
 
+def mostrar_resultado_multipisos(resultado: ResultadoPlanoMultipisos):
+
+    st.info(f"Plano con {resultado.numero_pisos} piso(s) generado correctamente.")
+
+    etiquetas = ["Planta Baja"] + [f"Planta Alta {i}" for i in range(1, resultado.numero_pisos)]
+    etiquetas = etiquetas[: resultado.numero_pisos]
+
+    tabs = st.tabs(etiquetas)
+
+    for tab, plano_piso in zip(tabs, resultado.pisos):
+        with tab:
+            mostrar_resultado_plano(plano_piso)
+
+
+def _mostrar_cualquier_resultado(resultado):
+    """Despacha a la función de presentación correcta según el tipo de resultado."""
+    if isinstance(resultado, ResultadoPlanoMultipisos):
+        mostrar_resultado_multipisos(resultado)
+    else:
+        mostrar_resultado_plano(resultado)
+
+
 # ============================================================
 # SECCIONES
 # ============================================================
@@ -197,7 +224,7 @@ def seccion_generar():
             )
             estado.update(label="Plano generado", state="complete")
 
-        mostrar_resultado_plano(resultado)
+        _mostrar_cualquier_resultado(resultado)
 
         st.success("El plano arquitectónico se generó correctamente.")
 

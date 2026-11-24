@@ -35,6 +35,7 @@ PROPORCIONES_AMBIENTES = {
     "lavanderia": 1.8,
     "estudio": 1.6,
     "terraza": 2.0,
+    "escalera": 2.5,
 }
 
 PROPORCION_DEFAULT = 2.0

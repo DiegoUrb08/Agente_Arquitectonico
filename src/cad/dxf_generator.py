@@ -11,6 +11,7 @@ from shapely.geometry import (
 )
 
 from src.cad.dxf_base import APP_ID, UNIDADES_METROS, registrar_metadatos
+from src.utils.texto import normalizar_nombre as _normalizar_nombre
 from src.cad.dxf_aberturas import dibujar_puerta, dibujar_ventana
 from src.cad.dxf_mobiliario import (
     agregar_rectangulo,
@@ -165,6 +166,40 @@ def dibujar_geometria(
             entidades.append(entidad)
 
     return entidades
+
+
+# ==========================================
+# ESCALERA
+# ==========================================
+
+_ALTO_PELDAN_M = 0.17  # altura estándar de un peldaño (m)
+
+
+def dibujar_escalera(msp, poligono):
+    """
+    Dibuja el patrón de peldaños de una escalera dentro de su polígono.
+    Los peldaños se representan como líneas horizontales equidistantes.
+    """
+    xmin, ymin, xmax, ymax = poligono.bounds
+    alto = ymax - ymin
+    n_peldanos = max(3, round(alto / _ALTO_PELDAN_M))
+    paso = alto / n_peldanos
+
+    for i in range(1, n_peldanos):
+        y = ymin + i * paso
+        msp.add_line(
+            (xmin + 0.05, y),
+            (xmax - 0.05, y),
+            dxfattribs={"layer": "AMBIENTES"},
+        )
+
+    # Flecha central indicando sentido de subida.
+    xc = (xmin + xmax) / 2
+    msp.add_line(
+        (xc, ymin + 0.10),
+        (xc, ymax - 0.10),
+        dxfattribs={"layer": "AMBIENTES"},
+    )
 
 
 # ==========================================
@@ -537,6 +572,9 @@ def generar_dxf_desde_geometrias(
             resultado_mobiliario
         )
 
+        if _normalizar_nombre(ambiente["nombre"]).startswith("escalera"):
+            dibujar_escalera(msp, poligono)
+
     # --------------------------------------
     # MUROS
     # --------------------------------------
@@ -652,6 +690,8 @@ def _dibujar_piso(
         registrar_metadatos(entidad, ambiente["id"], ambiente["nombre"])
         ambiente_shifted = {**ambiente, "poligono": poly_shifted}
         dibujar_etiqueta_ambiente(msp, ambiente_shifted, mob_shifted)
+        if _normalizar_nombre(ambiente["nombre"]).startswith("escalera"):
+            dibujar_escalera(msp, poly_shifted)
 
     # Muros
     if geometria_muros is not None:

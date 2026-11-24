@@ -163,8 +163,38 @@ def test_generar_plano_despacha_a_multipisos_si_numero_pisos_es_2(tmp_path):
 
 
 def test_escalera_esta_en_catalogo():
-    from src.planning.reglas_ambientes import AMBIENTES_VALIDOS
+    from src.planning.reglas_ambientes import AMBIENTES_VALIDOS, PROPORCIONES_AMBIENTES
     assert "escalera" in AMBIENTES_VALIDOS
+    assert "escalera" in PROPORCIONES_AMBIENTES
+
+
+def test_dxf_multipisos_contiene_ambas_plantas(tmp_path):
+    import ezdxf
+    req = _requerimientos_dos_pisos()
+    r = generar_plano_multipisos(req, 10, 20, tmp_path / "mp.dxf")
+    doc = ezdxf.readfile(str(r.ruta_dxf))
+    msp = doc.modelspace()
+    textos = [e.dxf.text for e in msp if e.dxftype() == "TEXT"]
+    etiquetas = [t for t in textos if "PLANTA" in t.upper()]
+    assert len(etiquetas) >= 2
+
+
+def test_escalera_peldanos_dibujados_en_dxf(tmp_path):
+    import ezdxf
+    from src.geometry.geometry_generator import generar_geometrias
+    from src.cad.dxf_generator import generar_dxf_desde_geometrias
+
+    dist = [
+        {"id": "sala_1", "nombre": "sala", "x": 0, "y": 0, "ancho": 7, "largo": 5},
+        {"id": "escalera_1", "nombre": "escalera", "x": 7, "y": 0, "ancho": 3, "largo": 5},
+    ]
+    geo = generar_geometrias(dist, 10, 5)
+    generar_dxf_desde_geometrias(geo, 10, 5, str(tmp_path / "esc.dxf"))
+    doc = ezdxf.readfile(str(tmp_path / "esc.dxf"))
+    msp = doc.modelspace()
+    # La escalera debe tener al menos 3 líneas de peldaños horizontales.
+    lineas = [e for e in msp if e.dxftype() == "LINE" and e.dxf.layer == "AMBIENTES"]
+    assert len(lineas) >= 3
 
 
 def test_la_interfaz_arranca_sin_excepciones():
