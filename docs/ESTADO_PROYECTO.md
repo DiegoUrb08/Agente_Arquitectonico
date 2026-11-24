@@ -113,18 +113,13 @@
 - Factory `get_provider()` en `src/ai/interpreter.py` elige según `LLM_PROVIDER` env var.
 - Mantener `src/ai/ollama_client.py` para compatibilidad (wrapper a `OllamaProvider`).
 
-### Fase 2: Configuración y dependencias (1 hora)
-- Crear `.env.example`:
-  ```
-  LLM_PROVIDER=groq  # groq, ollama, claude, openai, mock
-  GROQ_API_KEY=gsk_...  # gratis: https://console.groq.com
-  OLLAMA_HOST=http://localhost:11434  # si PROVIDER=ollama
-  ANTHROPIC_API_KEY=sk_...  # si PROVIDER=claude
-  OPENAI_API_KEY=sk_...  # si PROVIDER=openai
-  ```
-- `requirements.txt`: agregar `groq>=0.9` (ligera, ~100 KB).
-- `app.py`: leer `.env` al inicio con `python-dotenv`.
-- `.gitignore` ya excluye `.env` (correcto).
+### Fase 2: Configuración y dependencias (1 hora) — ✅ COMPLETO
+- Crear `.env.example` ✅
+- `requirements.txt`: agregar `groq>=0.9`, `python-dotenv>=1.0` ✅
+- `app.py`: leer `.env` y validar configuración ✅
+- `src/ai/config.py`: LLMConfig con validación clara ✅
+- `setup_llm.py`: script interactivo de primer setup ✅
+- `.gitignore` ya excluye `.env` ✅
 
 ### Fase 3: Tests multi-proveedor (1.5 horas)
 - Crear `tests/test_ai_providers.py` con tests para Groq, Ollama, mock (simulado siempre disponible).
@@ -173,8 +168,24 @@
     - OllamaProvider se configura por host
     - Factory devuelve el proveedor correcto
 
+20. **Configuración y validación de ambiente** (`src/ai/config.py`):
+    - `LLMConfig.validar_provider()`: valida cada proveedor
+    - Mensajes de error amigables con instrucciones (ej: "Visita https://console.groq.com/keys")
+    - `LLMConfig.mensaje_bienvenida()`: muestra info del proveedor en uso
+    - `app.py` valida config antes de iniciar UI
+
+21. **Script de setup interactivo** (`setup_llm.py`):
+    - Menu: 1=Groq, 2=Ollama, 3=Claude, 4=Salir
+    - Instrucciones paso a paso para cada proveedor
+    - Genera `.env` automáticamente con configuración
+
+22. **Tests de configuración** (`tests/test_llm_config.py`, 9 tests):
+    - Validación de API keys requeridas
+    - Mensajes de bienvenida por proveedor
+    - Hosts por defecto (Ollama)
+    - Proveedores desconocidos
+
 ## Siguientes etapas
-1. Fase 2: Configuración de ambiente y secretos.
-2. Fase 3: Tests y CI multiproveedor.
-3. Fase 4: UI con selector de proveedor.
-4. BIM export (IfcOpenShell o gbXML).
+1. Fase 3: Tests y CI multiproveedor.
+2. Fase 4: UI mejorada con selector de proveedor.
+3. BIM export (IfcOpenShell o gbXML).
