@@ -12,6 +12,7 @@ from src.planning.reglas_ambientes import (  # noqa: F401
     AMBIENTES_SOCIALES,
     AMBIENTES_PRIVADOS,
     AMBIENTES_SERVICIO,
+    AMBIENTES_VALIDOS,
     DIMENSIONES_REFERENCIA,
     obtener_dimensiones_referencia,
     obtener_proporcion_maxima,
@@ -91,6 +92,39 @@ def _validar_capacidad_terreno(requerimientos, nodos, area_terreno_dm2):
                 f"y el terreno solo tiene {area_terreno_m2:.1f} m². "
                 "Aumenta el terreno o el número de pisos."
             )
+
+
+def _es_tipo_valido(nombre: str) -> bool:
+    """True si el nombre normalizado corresponde a un tipo soportado."""
+    n = normalizar_nombre(nombre)
+    if n in AMBIENTES_VALIDOS:
+        return True
+    # Prefijos compuestos: "dormitorio principal", "bano visitas", etc.
+    for prefijo in ("dormitorio", "bano"):
+        if n.startswith(prefijo):
+            return True
+    return False
+
+
+def _validar_ambientes(nodos):
+    """
+    Rechaza tipos de ambiente que el optimizador no soporta.
+    Acumula todos los inválidos y los informa en un solo mensaje.
+    """
+    invalidos = sorted({
+        nodo["nombre"]
+        for nodo in nodos
+        if not _es_tipo_valido(nodo["nombre"])
+    })
+    if not invalidos:
+        return
+
+    catalogo = ", ".join(sorted(AMBIENTES_VALIDOS))
+    lista = ", ".join(f"'{n}'" for n in invalidos)
+    raise ValueError(
+        f"El tipo de ambiente {lista} no está en el catálogo del sistema. "
+        f"Los tipos disponibles son: {catalogo}."
+    )
 
 
 def _validar_grafo(grafo):
@@ -529,6 +563,7 @@ def optimizar_distribucion(requerimientos):
     nodos = grafo["nodos"]
     relaciones = grafo["relaciones"]
 
+    _validar_ambientes(nodos)
     _validar_capacidad_terreno(requerimientos, nodos, area_terreno_dm2)
 
     modelo = cp_model.CpModel()

@@ -62,6 +62,27 @@ AMBIENTES_SERVICIO = {
     "lavanderia",
 }
 
+# Tipos de ambiente reconocidos por el sistema.
+# Cualquier nombre que no sea prefijado por una clave de esta lista
+# se rechaza antes de llegar al optimizador.
+AMBIENTES_VALIDOS = {
+    "sala",
+    "comedor",
+    "cocina",
+    "dormitorio",
+    "dormitorio principal",
+    "bano",
+    "lavanderia",
+    "estudio",
+    "oficina",
+    "terraza",
+    "garaje",
+    "cochera",
+    "pasillo",
+    "closet",
+    "deposito",
+}
+
 
 # ------------------------------------------------------------
 # DIMENSIONES DE REFERENCIA EN DECÍMETROS

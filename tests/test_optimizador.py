@@ -132,3 +132,36 @@ def test_numero_de_pisos_invalido():
     req.numero_pisos = 0
     with pytest.raises(ValueError, match="pisos"):
         optimizar_distribucion(req)
+
+
+def test_ambiente_fuera_de_catalogo_se_rechaza():
+    with pytest.raises(ValueError, match="catálogo"):
+        optimizar_distribucion(_req([
+            Ambiente(nombre="sala"),
+            Ambiente(nombre="piscina"),
+        ]))
+
+
+def test_ambiente_fuera_de_catalogo_lista_todos_los_invalidos():
+    with pytest.raises(ValueError, match="'jacuzzi'") as exc:
+        optimizar_distribucion(_req([
+            Ambiente(nombre="sala"),
+            Ambiente(nombre="jacuzzi"),
+            Ambiente(nombre="cancha"),
+        ]))
+    assert "cancha" in str(exc.value)
+
+
+def test_garaje_esta_en_catalogo():
+    dist = optimizar_distribucion(_req([
+        Ambiente(nombre="sala"), Ambiente(nombre="garaje"),
+    ]))
+    assert any(a["id"].startswith("garaje") for a in dist)
+
+
+def test_dormitorio_compuesto_esta_en_catalogo():
+    dist = optimizar_distribucion(_req([
+        Ambiente(nombre="sala"),
+        Ambiente(nombre="dormitorio principal"),
+    ]))
+    assert any("dormitorio" in a["id"] for a in dist)
