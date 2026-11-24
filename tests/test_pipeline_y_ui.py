@@ -84,7 +84,7 @@ def test_pipeline_genera_dxf_y_reporta_etapas(tmp_path):
     assert r.ruta_dxf.exists()
     assert len(r.distribucion) == 4
     assert r.validacion["distribucion_conectada"] is True
-    assert len(etapas) == 8
+    assert len(etapas) == 9
 
 
 def test_pipeline_sin_dimensiones_de_terreno(tmp_path):

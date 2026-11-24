@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **78 pruebas pytest, todas pasan** (~10 s): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos y errores), pipeline completo y arranque de la UI con `streamlit.testing.AppTest`.
+- **87 pruebas pytest, todas pasan** (~10 s): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos y errores), pipeline completo y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -58,13 +58,15 @@
 8. **Amueblado automático** (`src/geometry/mobiliario_automatico.py`): plantillas por tipo de ambiente (sala, comedor, cocina, dormitorio, baño, estudio/oficina). Los muebles se pegan a las paredes (esquinas primero, luego a lo largo de los muros; prueba ambas orientaciones), sin salirse, sin solaparse y sin tapar el radio de cada puerta. Lo que no cabe se informa en `omitidos`. `construir_plano` lo incluye por defecto (`amueblar=False` lo desactiva) y `ResultadoPlano.mobiliario` lo expone; como `editar_plano` usa `construir_plano`, el mobiliario también se regenera al editar.
 9. **`lejos_de`** en `mover_ambiente`: recorre una malla de 0,5 m sobre el terreno y elige la posición válida más alejada de la referencia (empate: la más cercana a la actual).
 10. **Error latente corregido**: `generar_aberturas` fallaba en ~15 % de las distribuciones ("puerta no está dentro de un muro") porque sumas como 11.4 + 3.7 = 15.100000000000001 desalineaban el borde compartido y el muro interior desaparecía. `construir_poligono_ambiente` redondea ahora a 4 decimales. Antes fallaba en menos de 40 generaciones seguidas; tras la corrección, 120 sin fallos.
+11. **Ventanas automáticas** (`src/geometry/window_generator.py`): una pared es exterior si pertenece al perímetro del conjunto de ambientes. Por ambiente se toman hasta 2 de sus tramos exteriores más largos (tramos colineales fusionados), con la ventana centrada en el tramo, margen de 0,40 m a los extremos y ancho según el tipo (sala 1,8 m, comedor 1,5 m, dormitorio/cocina 1,2 m, baño 0,6 m; se reduce si el tramo es corto y se descarta si queda por debajo de 0,5 m). No se colocan en pasillo/clóset/depósito ni donde su hueco (con 5 cm de holgura) toque el de una puerta u otra ventana. Los ambientes que se quedan sin ventana se informan en `ResultadoPlano.ventanas["omitidos"]`. Verificado con 120 planos reales del optimizador sin fallos (una primera versión fallaba en 4 de 45: `linemerge` con tramos sueltos y huecos solapados). Se abren en el muro con `generar_aberturas` y se dibujan en la capa VENTANAS.
 
 ## Limitaciones conocidas
 - `editar_plano` regenera muros, puertas, aberturas y mobiliario (se recoloca con las plantillas, no se conservan posiciones previas) y, si un ambiente que actúa de «nudo» cambia mucho de tamaño, puede quedar sin pared compartida con algún vecino (se avisa; no se reubican los vecinos).
 - `editar_dxf` (edición directa) sigue sin recalcular muros ni puertas.
+- Las ventanas tienen ancho fijo por tipo de ambiente (sin altura de alféizar ni orientación solar) y se colocan en cualquier pared exterior, incluso la que da a un hueco interior entre ambientes.
 - El editor solo opera con habitaciones rectangulares y DXF en metros.
 - En distribuciones muy compactas, `modificar_area` y `mover_ambiente` suelen rechazar el cambio por falta de espacio (comportamiento correcto, pero limitante).
 - Sin remoto Git ni CI.
 
 ## Siguientes etapas
-1. Más ampliaciones (más tipos de ambiente en las plantillas, ventanas, varios pisos) y, después, BIM.
+1. Más ampliaciones (más tipos de ambiente en las plantillas, varios pisos) y, después, BIM.

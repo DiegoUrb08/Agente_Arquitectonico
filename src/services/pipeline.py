@@ -16,6 +16,7 @@ from src.geometry.geometry_generator import generar_geometrias
 from src.geometry.mobiliario_automatico import amueblar_automaticamente
 from src.geometry.opening_generator import generar_aberturas
 from src.geometry.wall_generator import generar_muros
+from src.geometry.window_generator import generar_ventanas_automaticas
 from src.models.distribucion import validar_esquema_distribucion
 from src.planning.layout_optimizer import optimizar_distribucion
 
@@ -34,6 +35,7 @@ class ResultadoPlano:
     aberturas: dict
     ruta_dxf: Path
     mobiliario: dict | None = None
+    ventanas: dict | None = None
 
 
 def generar_plano(
@@ -108,10 +110,17 @@ def construir_plano(
         espesor_muro_m=ESPESOR_INTERIOR_M,
     )
 
+    avisar("Colocando ventanas en los muros exteriores...")
+    ventanas = generar_ventanas_automaticas(
+        geometrias,
+        espesor_muro_m=ESPESOR_EXTERIOR_M,
+        puertas=puertas,
+    )
+
     avisar("Generando aberturas en los muros...")
     aberturas = generar_aberturas(
         resultado_muros=muros,
-        aberturas=puertas["puertas"],
+        aberturas=puertas["puertas"] + ventanas["ventanas"],
     )
 
     mobiliario = None
@@ -143,6 +152,7 @@ def construir_plano(
         aberturas=aberturas,
         ruta_dxf=ruta,
         mobiliario=mobiliario,
+        ventanas=ventanas,
     )
 
 
