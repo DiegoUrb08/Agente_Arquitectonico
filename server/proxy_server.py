@@ -83,7 +83,7 @@ def chat():
     messages = datos.get("messages")
     temperature = datos.get("temperature", 0.7)
     max_tokens = datos.get("max_tokens", 2048)
-    model = datos.get("model", "mixtral-8x7b-32768")
+    model = datos.get("model", "openai/gpt-oss-20b")
 
     if not messages:
         return jsonify({"error": "Falta el campo 'messages'."}), 400

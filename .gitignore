@@ -11,6 +11,7 @@ __pycache__/
 # Credenciales y configuración local
 .env
 .env.*
+!.env.example
 *.key
 *.pem
 secrets*.json

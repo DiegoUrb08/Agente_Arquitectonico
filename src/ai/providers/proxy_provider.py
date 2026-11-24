@@ -17,7 +17,7 @@ class ProxyProvider(LLMProvider):
         self,
         proxy_url: str | None = None,
         access_token: str | None = None,
-        model: str = "mixtral-8x7b-32768",
+        model: str = "openai/gpt-oss-20b",
         timeout: int = 60,
     ):
         self.proxy_url = (proxy_url or os.getenv("PROXY_URL", "")).rstrip("/")

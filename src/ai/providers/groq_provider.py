@@ -7,7 +7,7 @@ from .base import LLMProvider
 class GroqProvider(LLMProvider):
     """Proveedor que usa Groq API (https://console.groq.com)."""
 
-    def __init__(self, api_key: str | None = None, model: str = "mixtral-8x7b-32768"):
+    def __init__(self, api_key: str | None = None, model: str = "openai/gpt-oss-20b"):
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
         self._modelo = model
 

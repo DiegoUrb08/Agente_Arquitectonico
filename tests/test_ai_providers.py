@@ -41,7 +41,7 @@ class TestGroqProvider:
 
             provider = GroqProvider(api_key="gsk_test_key")
             assert provider.nombre == "groq"
-            assert provider.modelo == "mixtral-8x7b-32768"
+            assert provider.modelo == "openai/gpt-oss-20b"
 
 
 class TestOllamaProvider:
