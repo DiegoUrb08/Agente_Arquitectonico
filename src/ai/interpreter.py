@@ -11,7 +11,7 @@ from src.models.defaults import (
 )
 
 from src.ai.errores import mensaje_amigable
-from src.ai.ollama_client import MODEL_NAME, chat_con_reintentos
+from src.ai.providers import get_provider
 
 
 # ============================================================
@@ -181,23 +181,18 @@ No agregues explicaciones antes ni despues.
 """
 
     # --------------------------------------------------------
-    # 1.2 CONSULTA A OLLAMA
+    # 1.2 CONSULTA AL PROVEEDOR LLM
     # --------------------------------------------------------
 
-    _hist: list = []
-    respuesta = chat_con_reintentos(
-        model=MODEL_NAME,
+    provider = get_provider()
+    respuesta = provider.chat(
         messages=[
             {
                 "role": "user",
                 "content": prompt
             }
         ],
-        format="json",
-        options={
-            "temperature": 0.1
-        },
-        historial=_hist,
+        temperature=0.1,
     )
 
     contenido = respuesta["message"]["content"]
@@ -233,14 +228,10 @@ No agregues explicaciones antes ni despues.
         ) from error
 
     # --------------------------------------------------------
-    # 1.5 DIAGNÓSTICO: ANOTAR REINTENTOS EN OBSERVACIONES
+    # 1.5 NOTA: REINTENTOS MANEJADOS INTERNAMENTE POR PROVIDER
     # --------------------------------------------------------
-
-    if len(_hist) > 1:
-        tiempos = " + ".join(f"{h['tiempo_s']}s" for h in _hist)
-        requerimientos.observaciones.append(
-            f"[LLM] {len(_hist)} intentos: {tiempos}"
-        )
+    # Los reintentos ahora se manejan dentro del provider.
+    # El registro de reintentos se puede agregar aquí si es necesario.
 
     # --------------------------------------------------------
     # 1.6 FALLBACK: EXTRAER TERRENO POR REGEX SI EL MODELO LO OMITIÓ

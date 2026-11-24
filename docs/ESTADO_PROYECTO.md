@@ -102,5 +102,56 @@
 
 16. **Closet en plantillas de mobiliario** (`mobiliario_automatico.py`): `"closet"` → armario.
 
+## Plan de acción: soporte multi-LLM con Groq gratis (para publicación en GitHub)
+
+**Objetivo:** permitir que usuarios sin Ollama usen el agente **completamente gratis** (Groq) o con sus propias claves (Claude, OpenAI) o servidor local.
+
+### Fase 1: Abstracción de proveedores LLM (2 horas) — EN PROGRESO
+- Crear `src/ai/providers/__init__.py` y base class `LLMProvider` (métodos `chat()`, propiedades `nombre`, `modelo`).
+- Implementar `GroqProvider` (Groq API, **default gratis, sin tarjeta**).
+- Implementar `OllamaProvider` (actual `ollama_client.py`, reutilizar lógica).
+- Factory `get_provider()` en `src/ai/interpreter.py` elige según `LLM_PROVIDER` env var.
+- Mantener `src/ai/ollama_client.py` para compatibilidad (wrapper a `OllamaProvider`).
+
+### Fase 2: Configuración y dependencias (1 hora)
+- Crear `.env.example`:
+  ```
+  LLM_PROVIDER=groq  # groq, ollama, claude, openai, mock
+  GROQ_API_KEY=gsk_...  # gratis: https://console.groq.com
+  OLLAMA_HOST=http://localhost:11434  # si PROVIDER=ollama
+  ANTHROPIC_API_KEY=sk_...  # si PROVIDER=claude
+  OPENAI_API_KEY=sk_...  # si PROVIDER=openai
+  ```
+- `requirements.txt`: agregar `groq>=0.9` (ligera, ~100 KB).
+- `app.py`: leer `.env` al inicio con `python-dotenv`.
+- `.gitignore` ya excluye `.env` (correcto).
+
+### Fase 3: Tests multi-proveedor (1.5 horas)
+- Crear `tests/test_ai_providers.py` con tests para Groq, Ollama, mock (simulado siempre disponible).
+- Parametrizar tests: `@pytest.mark.parametrize("provider", ["mock", "groq"])`.
+- Mock provider devuelve respuestas hardcoded (sin red).
+- CI/GitHub Actions: correr tests con `LLM_PROVIDER=mock` (sin credenciales).
+
+### Fase 4: Documentación y UI (1 hora)
+- `README.md`: tabla de setup (Groq gratis, Ollama local, Claude/OpenAI con clave).
+- Instrucciones de signup Groq (1 min, sin tarjeta).
+- `src/ui/interfaz.py`: mostrar provider actual y mensaje si falta configuración.
+
+### Tabla comparativa de proveedores
+| Proveedor | Costo | Setup | Velocidad | Modelos |
+|-----------|-------|-------|-----------|---------|
+| **Groq** (default) | 🟢 Gratis | 2 min signup | 🚀 Ultra rápido | Mixtral, LLaMA 2 |
+| **Ollama** (local) | 🟢 Gratis | 10 min + 2 GB | ⚠️ Según PC | qwen3:8b, otros |
+| **Claude** | 🟡 $5 créditos | Clave API | ⚡ Rápido | Opus, Sonnet, Haiku |
+| **OpenAI** | 🟡 $5 créditos | Clave API | ⚡ Rápido | GPT-4, 3.5 |
+
+### Por qué Groq como default
+- Completamente **gratis, sin tarjeta de crédito** (solo email).
+- **Sin descargas** (API remoto).
+- Velocidad: 100+ tokens/s (más rápido que OpenAI).
+- Rate limits generosos: 8,000 req/min.
+- Modelos open: Mixtral 8x7B (comparable a GPT-3.5), LLaMA 2 70B.
+
 ## Siguientes etapas
-1. BIM export (IfcOpenShell o gbXML).
+1. ~~**Soporte LLM vía API**~~ **En progreso:** plan arriba.
+2. BIM export (IfcOpenShell o gbXML).
