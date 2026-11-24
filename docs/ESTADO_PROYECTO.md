@@ -60,13 +60,35 @@
 10. **Error latente corregido**: `generar_aberturas` fallaba en ~15 % de las distribuciones ("puerta no está dentro de un muro") porque sumas como 11.4 + 3.7 = 15.100000000000001 desalineaban el borde compartido y el muro interior desaparecía. `construir_poligono_ambiente` redondea ahora a 4 decimales. Antes fallaba en menos de 40 generaciones seguidas; tras la corrección, 120 sin fallos.
 11. **Ventanas automáticas** (`src/geometry/window_generator.py`): una pared es exterior si pertenece al perímetro del conjunto de ambientes. Por ambiente se toman hasta 2 de sus tramos exteriores más largos (tramos colineales fusionados), con la ventana centrada en el tramo, margen de 0,40 m a los extremos y ancho según el tipo (sala 1,8 m, comedor 1,5 m, dormitorio/cocina 1,2 m, baño 0,6 m; se reduce si el tramo es corto y se descarta si queda por debajo de 0,5 m). No se colocan en pasillo/clóset/depósito ni donde su hueco (con 5 cm de holgura) toque el de una puerta u otra ventana. Los ambientes que se quedan sin ventana se informan en `ResultadoPlano.ventanas["omitidos"]`. Verificado con 120 planos reales del optimizador sin fallos (una primera versión fallaba en 4 de 45: `linemerge` con tramos sueltos y huecos solapados). Se abren en el muro con `generar_aberturas` y se dibujan en la capa VENTANAS.
 
+## Benchmark LLM (Qwen3:8b) – 2026-11-24
+
+20 casos de petición real ejecutados con `scripts/benchmark_llm.py` (resultados en `docs/benchmark_llm.json`).
+
+| Resultado | Casos |
+|---|---|
+| Interpretación OK + plano OK + conectado | 15 / 20 |
+| Error: terreno no extraído | 4 / 20 |
+| Error esperado (prompt ambiguo) | 1 / 20 |
+
+**Hallazgos registrados para corrección futura:**
+
+1. **Ambientes fuera de catálogo se aceptan** – "piscina" en el prompt produjo `area_objetivo: 8 m²` (valor válido para Pydantic) y el plano se generó con ese ambiente. El mecanismo `mensaje_amigable` solo actúa sobre `ValidationError`; no hay rechazo cuando el modelo asigna un área válida a un ambiente no soportado. Solución pendiente: lista blanca de ambientes válidos que el `layout_optimizer` o el intérprete compruebe antes de optimizar.
+
+2. **Extracción intermitente del terreno** – 3 prompts con dimensiones explícitas fallaron (`minimo` "6 x 10 metros", `habitantes` "11 x 20 m", `ingles_mezclado` "10 x 20 meter lot"). El mismo texto en otros casos sí funciona. Causa probable: el modelo omite las dimensiones cuando el texto tiene información que distrae (familia de 5 personas, departamento pequeño, inglés). Solución pendiente: reintentar la extracción si `ancho_terreno_m` o `largo_terreno_m` llegan nulos pero el prompt contiene patrones numéricos; o añadir una segunda pasada de extracción centrada solo en el terreno.
+
+3. **Tiempos extremos** – el caso "ambiguo" tardó 452 s (≈ 8 min). Los reintentos internos de Ollama no quedan registrados en el benchmark. Solución pendiente: registrar número de reintentos y tiempo por intento en la respuesta del intérprete.
+
 ## Limitaciones conocidas
 - `editar_plano` regenera muros, puertas, aberturas y mobiliario (se recoloca con las plantillas, no se conservan posiciones previas) y, si un ambiente que actúa de «nudo» cambia mucho de tamaño, puede quedar sin pared compartida con algún vecino (se avisa; no se reubican los vecinos).
 - `editar_dxf` (edición directa) sigue sin recalcular muros ni puertas.
 - Las ventanas tienen ancho fijo por tipo de ambiente (sin altura de alféizar ni orientación solar) y se colocan en cualquier pared exterior, incluso la que da a un hueco interior entre ambientes.
 - El editor solo opera con habitaciones rectangulares y DXF en metros.
 - En distribuciones muy compactas, `modificar_area` y `mover_ambiente` suelen rechazar el cambio por falta de espacio (comportamiento correcto, pero limitante).
+- Ambientes fuera de catálogo (p. ej. "piscina") pasan sin rechazo si el modelo les asigna un área válida (ver hallazgo 1 del benchmark).
 - Sin remoto Git ni CI.
 
 ## Siguientes etapas
-1. Más ampliaciones (más tipos de ambiente en las plantillas, varios pisos) y, después, BIM.
+1. **[Corrección]** Lista blanca de ambientes soportados: rechazar tipos fuera de catálogo con mensaje amigable antes de llegar al optimizador.
+2. **[Corrección]** Segunda pasada de extracción del terreno si llega nulo pero el prompt contiene dimensiones.
+3. **[Corrección]** Registrar reintentos y tiempos parciales del intérprete para diagnosticar casos lentos.
+4. Más ampliaciones (más tipos de ambiente en las plantillas, varios pisos) y, después, BIM.

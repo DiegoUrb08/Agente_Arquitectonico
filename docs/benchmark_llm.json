@@ -1,0 +1,1380 @@
+[
+  {
+    "id": "basico",
+    "prompt": "Quiero una casa en un terreno de 10 x 20 metros con 2 dormitorios, 1 baño, sala, comedor y cocina.",
+    "tiempo_interpretacion_s": 13.2,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 10.0,
+      "largo_terreno_m": 20.0,
+      "area_terreno_m2": 200.0,
+      "area_total_vivienda_m2": 88.64,
+      "ambientes": [
+        {
+          "nombre": "dormitorio",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 15.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        },
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "comedor",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [
+        "El área del terreno (200 m²) es pequeña para una vivienda con 5 ambientes. Se recomienda verificar si el área construida será adecuada."
+      ],
+      "datos_faltantes": [
+        "Número de pisos",
+        "Área total de la vivienda",
+        "Áreas mínimas o objetivos para cada ambiente"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "dormitorio": 2,
+        "bano": 1,
+        "sala": 1,
+        "comedor": 1,
+        "cocina": 1
+      },
+      "ambientes_obtenidos": {
+        "dormitorio": 2,
+        "bano": 1,
+        "sala": 1,
+        "comedor": 1,
+        "cocina": 1
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        10.0,
+        20.0
+      ],
+      "relaciones_inventadas": 0
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 6,
+    "conectado": true,
+    "ventanas": 12,
+    "puertas": 5,
+    "tiempo_plano_s": 15.5
+  },
+  {
+    "id": "areas_explicitas",
+    "prompt": "Vivienda en terreno de 12 x 18 m. La sala debe tener 25 m2, la cocina 12 m2 y los 3 dormitorios 12 m2 cada uno. Un baño y un comedor.",
+    "tiempo_interpretacion_s": 24.2,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 12.0,
+      "largo_terreno_m": 18.0,
+      "area_terreno_m2": 216.0,
+      "area_total_vivienda_m2": 113.64,
+      "ambientes": [
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 25.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "dormitorio",
+          "cantidad": 3,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "comedor",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 9.0
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [],
+      "datos_faltantes": [
+        "numero_pisos",
+        "area_comedor_m2",
+        "area_baño_m2",
+        "area_total_vivienda_m2"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "sala": 1,
+        "cocina": 1,
+        "dormitorio": 3,
+        "bano": 1,
+        "comedor": 1
+      },
+      "ambientes_obtenidos": {
+        "sala": 1,
+        "cocina": 1,
+        "dormitorio": 3,
+        "comedor": 1,
+        "bano": 1
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        12.0,
+        18.0
+      ],
+      "areas_incorrectas": [],
+      "areas_ok": true,
+      "relaciones_inventadas": 0
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 7,
+    "conectado": true,
+    "ventanas": 13,
+    "puertas": 5,
+    "tiempo_plano_s": 5.9
+  },
+  {
+    "id": "relaciones",
+    "prompt": "Casa de 9 x 16 metros: sala, cocina, 2 dormitorios y 2 baños. La cocina debe estar junto a la sala y cada dormitorio junto a un baño.",
+    "tiempo_interpretacion_s": 15.3,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 9.0,
+      "largo_terreno_m": 16.0,
+      "area_terreno_m2": 144.0,
+      "area_total_vivienda_m2": 81.82,
+      "ambientes": [
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "dormitorio",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 15.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        }
+      ],
+      "relaciones_adyacencia": [
+        {
+          "ambiente_a": "cocina",
+          "ambiente_b": "sala",
+          "modo": "todos"
+        },
+        {
+          "ambiente_a": "dormitorio",
+          "ambiente_b": "baño",
+          "modo": "todos"
+        }
+      ],
+      "observaciones": [],
+      "datos_faltantes": [
+        "numero_pisos",
+        "area_total_vivienda_m2"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "sala": 1,
+        "cocina": 1,
+        "dormitorio": 2,
+        "bano": 2
+      },
+      "ambientes_obtenidos": {
+        "sala": 1,
+        "cocina": 1,
+        "dormitorio": 2,
+        "bano": 2
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        9.0,
+        16.0
+      ],
+      "relaciones_faltan": [],
+      "relaciones_ok": true,
+      "relaciones_inventadas": null
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 6,
+    "conectado": true,
+    "ventanas": 12,
+    "puertas": 7,
+    "tiempo_plano_s": 15.9
+  },
+  {
+    "id": "solo_area_terreno",
+    "prompt": "Tengo un terreno de 200 m2 y quiero una casa con 3 dormitorios, 2 baños, sala y cocina.",
+    "tiempo_interpretacion_s": 16.4,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 14.14,
+      "largo_terreno_m": 14.14,
+      "area_terreno_m2": 200.0,
+      "area_total_vivienda_m2": 98.86,
+      "ambientes": [
+        {
+          "nombre": "dormitorio",
+          "cantidad": 3,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 15.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        },
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [],
+      "datos_faltantes": [
+        "area_total_vivienda_m2",
+        "numero_pisos"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "dormitorio": 3,
+        "bano": 2,
+        "sala": 1,
+        "cocina": 1
+      },
+      "ambientes_obtenidos": {
+        "dormitorio": 3,
+        "bano": 2,
+        "sala": 1,
+        "cocina": 1
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        14.14,
+        14.14,
+        200.0
+      ],
+      "relaciones_inventadas": 0
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 7,
+    "conectado": true,
+    "ventanas": 13,
+    "puertas": 8,
+    "tiempo_plano_s": 1.7
+  },
+  {
+    "id": "ambientes_extra",
+    "prompt": "Casa en terreno de 10 x 22 m con sala, comedor, cocina, 3 dormitorios, 2 baños, un estudio y un cuarto de lavanderia.",
+    "tiempo_interpretacion_s": 17.3,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 10.0,
+      "largo_terreno_m": 22.0,
+      "area_terreno_m2": 220.0,
+      "area_total_vivienda_m2": 132.95,
+      "ambientes": [
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "comedor",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "dormitorio",
+          "cantidad": 3,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 15.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        },
+        {
+          "nombre": "estudio",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 10.0
+        },
+        {
+          "nombre": "cuarto_de_lavanderia",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 8.0
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [
+        "No se especifica el numero de pisos",
+        "No se especifica el area total de la vivienda",
+        "No se especifican areas minimas u objetivos para los ambientes",
+        "El cuarto de lavanderia es un ambiente separado"
+      ],
+      "datos_faltantes": [
+        "numero_pisos",
+        "area_total_vivienda_m2",
+        "areas_minimas_y_objetivos_ambientes"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "sala": 1,
+        "comedor": 1,
+        "cocina": 1,
+        "dormitorio": 3,
+        "bano": 2,
+        "estudio": 1,
+        "lavanderia": 1
+      },
+      "ambientes_obtenidos": {
+        "sala": 1,
+        "comedor": 1,
+        "cocina": 1,
+        "dormitorio": 4,
+        "bano": 2,
+        "estudio": 1
+      },
+      "faltan": [
+        "lavanderia"
+      ],
+      "cantidad_incorrecta": [
+        "dormitorio"
+      ],
+      "sobran": [],
+      "ambientes_ok": false,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        10.0,
+        22.0
+      ],
+      "relaciones_inventadas": 0
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 10,
+    "conectado": true,
+    "ventanas": 19,
+    "puertas": 10,
+    "tiempo_plano_s": 17.9
+  },
+  {
+    "id": "minimo",
+    "prompt": "Departamento pequeño de 6 x 10 metros con un dormitorio, un baño y una cocina integrada a la sala.",
+    "interpretacion": "error",
+    "error": "ValueError: No se especifico el area ni las dimensiones del terreno. Es necesario solicitar esta informacion al usuario.",
+    "tiempo_interpretacion_s": 50.1
+  },
+  {
+    "id": "habitantes",
+    "prompt": "Casa para una familia de 5 personas en un terreno de 11 x 20 m. Necesitamos 3 dormitorios, 2 baños, sala-comedor y cocina.",
+    "interpretacion": "error",
+    "error": "ValueError: No se especifico el area ni las dimensiones del terreno. Es necesario solicitar esta informacion al usuario.",
+    "tiempo_interpretacion_s": 7.0
+  },
+  {
+    "id": "dos_pisos",
+    "prompt": "Casa de 2 pisos en un terreno de 8 x 15 m con sala, cocina, comedor, 3 dormitorios y 2 baños.",
+    "tiempo_interpretacion_s": 15.1,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": 2,
+      "ancho_terreno_m": 8.0,
+      "largo_terreno_m": 15.0,
+      "area_terreno_m2": 120.0,
+      "area_total_vivienda_m2": 112.5,
+      "ambientes": [
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "comedor",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "dormitorio",
+          "cantidad": 3,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 15.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [],
+      "datos_faltantes": [
+        "area_total_vivienda_m2"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "sala": 1,
+        "cocina": 1,
+        "comedor": 1,
+        "dormitorio": 3,
+        "bano": 2
+      },
+      "ambientes_obtenidos": {
+        "sala": 1,
+        "cocina": 1,
+        "comedor": 1,
+        "dormitorio": 3,
+        "bano": 2
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        8.0,
+        15.0
+      ],
+      "relaciones_inventadas": 0
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 8,
+    "conectado": true,
+    "ventanas": 16,
+    "puertas": 8,
+    "tiempo_plano_s": 16.9
+  },
+  {
+    "id": "area_total",
+    "prompt": "Quiero construir 120 m2 en un terreno de 10 x 20 m, con 3 dormitorios, 2 baños, sala, comedor y cocina.",
+    "tiempo_interpretacion_s": 13.7,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 10.0,
+      "largo_terreno_m": 20.0,
+      "area_terreno_m2": 200.0,
+      "area_total_vivienda_m2": 120.0,
+      "ambientes": [
+        {
+          "nombre": "dormitorio",
+          "cantidad": 3,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 16.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.4
+        },
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 19.2
+        },
+        {
+          "nombre": "comedor",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.8
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.8
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [],
+      "datos_faltantes": [
+        "numero_pisos",
+        "areas_minimas_o_objetivo_ambientes"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "dormitorio": 3,
+        "bano": 2,
+        "sala": 1,
+        "comedor": 1,
+        "cocina": 1
+      },
+      "ambientes_obtenidos": {
+        "dormitorio": 3,
+        "bano": 2,
+        "sala": 1,
+        "comedor": 1,
+        "cocina": 1
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        10.0,
+        20.0
+      ],
+      "relaciones_inventadas": 0
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 8,
+    "conectado": true,
+    "ventanas": 15,
+    "puertas": 8,
+    "tiempo_plano_s": 15.6
+  },
+  {
+    "id": "numeros_en_letras",
+    "prompt": "Necesito una vivienda en un lote de diez por veinte metros, con dos dormitorios, dos baños, una sala y una cocina.",
+    "tiempo_interpretacion_s": 13.8,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 10.0,
+      "largo_terreno_m": 20.0,
+      "area_terreno_m2": 200.0,
+      "area_total_vivienda_m2": 81.82,
+      "ambientes": [
+        {
+          "nombre": "dormitorio",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 15.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        },
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [
+        "Se debe verificar que el área total de la vivienda sea compatible con el área del terreno (200 m²)."
+      ],
+      "datos_faltantes": [
+        "Número de pisos",
+        "Área total deseada de la vivienda"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "dormitorio": 2,
+        "bano": 2,
+        "sala": 1,
+        "cocina": 1
+      },
+      "ambientes_obtenidos": {
+        "dormitorio": 2,
+        "bano": 2,
+        "sala": 1,
+        "cocina": 1
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        10.0,
+        20.0
+      ],
+      "relaciones_inventadas": 0
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 6,
+    "conectado": true,
+    "ventanas": 12,
+    "puertas": 3,
+    "tiempo_plano_s": 1.9
+  },
+  {
+    "id": "informal",
+    "prompt": "una casita de 7x14, con 2 cuartos, baño, cocina y sala nomas",
+    "tiempo_interpretacion_s": 32.5,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 7.0,
+      "largo_terreno_m": 14.0,
+      "area_terreno_m2": 98.0,
+      "area_total_vivienda_m2": 59.09,
+      "ambientes": [
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        },
+        {
+          "nombre": "cuartos",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 8.0
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [
+        "No se especificaron áreas mínimas u objetivo para ningún ambiente"
+      ],
+      "datos_faltantes": [
+        "Área total de la vivienda",
+        "Número de pisos"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "dormitorio": 2,
+        "bano": 1,
+        "cocina": 1,
+        "sala": 1
+      },
+      "ambientes_obtenidos": {
+        "sala": 1,
+        "cocina": 1,
+        "bano": 1,
+        "dormitorio": 2
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        7.0,
+        14.0
+      ],
+      "relaciones_inventadas": 0
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 5,
+    "conectado": true,
+    "ventanas": 9,
+    "puertas": 4,
+    "tiempo_plano_s": 0.3
+  },
+  {
+    "id": "grande",
+    "prompt": "Residencia en terreno de 15 x 30 m: sala, comedor, cocina, 4 dormitorios, 3 baños, estudio, sala de estar y lavanderia. La cocina junto al comedor.",
+    "tiempo_interpretacion_s": 30.6,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 15.0,
+      "largo_terreno_m": 30.0,
+      "area_terreno_m2": 450.0,
+      "area_total_vivienda_m2": 162.5,
+      "ambientes": [
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "comedor",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "dormitorio",
+          "cantidad": 4,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 15.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 3,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        },
+        {
+          "nombre": "estudio",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 10.0
+        },
+        {
+          "nombre": "sala_de_estar",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 8.0
+        },
+        {
+          "nombre": "lavanderia",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 5.0
+        }
+      ],
+      "relaciones_adyacencia": [
+        {
+          "ambiente_a": "cocina",
+          "ambiente_b": "comedor",
+          "modo": "todos"
+        }
+      ],
+      "observaciones": [],
+      "datos_faltantes": [
+        "area_total_vivienda_m2",
+        "numero_pisos"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "sala": 1,
+        "comedor": 1,
+        "cocina": 1,
+        "dormitorio": 4,
+        "bano": 3,
+        "estudio": 1
+      },
+      "ambientes_obtenidos": {
+        "sala": 2,
+        "comedor": 1,
+        "cocina": 1,
+        "dormitorio": 4,
+        "bano": 3,
+        "estudio": 1,
+        "lavanderia": 1
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [
+        "sala"
+      ],
+      "sobran": [
+        "lavanderia"
+      ],
+      "ambientes_ok": false,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        15.0,
+        30.0
+      ],
+      "relaciones_faltan": [],
+      "relaciones_ok": true,
+      "relaciones_inventadas": null
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 13,
+    "conectado": true,
+    "ventanas": 24,
+    "puertas": 12,
+    "tiempo_plano_s": 19.8
+  },
+  {
+    "id": "fuera_catalogo",
+    "prompt": "Casa de 10 x 20 m con sala, cocina, 2 dormitorios, 1 baño y una piscina.",
+    "tiempo_interpretacion_s": 15.7,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 10.0,
+      "largo_terreno_m": 20.0,
+      "area_terreno_m2": 200.0,
+      "area_total_vivienda_m2": 84.09,
+      "ambientes": [
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "dormitorio",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 15.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        },
+        {
+          "nombre": "piscina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 8.0
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [],
+      "datos_faltantes": [
+        "numero_pisos",
+        "area_total_vivienda_m2"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "sala": 1,
+        "cocina": 1,
+        "dormitorio": 2,
+        "bano": 1
+      },
+      "ambientes_obtenidos": {
+        "sala": 1,
+        "cocina": 1,
+        "dormitorio": 2,
+        "bano": 1,
+        "piscina": 1
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [
+        "piscina"
+      ],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        10.0,
+        20.0
+      ],
+      "relaciones_inventadas": 0,
+      "fuera_catalogo_presente": true
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 6,
+    "conectado": true,
+    "ventanas": 12,
+    "puertas": 5,
+    "tiempo_plano_s": 0.8
+  },
+  {
+    "id": "garaje",
+    "prompt": "Vivienda en 9 x 18 m con garaje, sala, cocina, 2 dormitorios y baño.",
+    "tiempo_interpretacion_s": 38.4,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 9.0,
+      "largo_terreno_m": 18.0,
+      "area_terreno_m2": 162.0,
+      "area_total_vivienda_m2": 84.09,
+      "ambientes": [
+        {
+          "nombre": "garaje",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 8.0
+        },
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "dormitorio",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 15.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [],
+      "datos_faltantes": [
+        "numero_pisos",
+        "area_total_vivienda_m2"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "sala": 1,
+        "cocina": 1,
+        "dormitorio": 2,
+        "bano": 1,
+        "garaje": 1
+      },
+      "ambientes_obtenidos": {
+        "garaje": 1,
+        "sala": 1,
+        "cocina": 1,
+        "dormitorio": 2,
+        "bano": 1
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        9.0,
+        18.0
+      ],
+      "relaciones_inventadas": 0
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 6,
+    "conectado": true,
+    "ventanas": 11,
+    "puertas": 6,
+    "tiempo_plano_s": 1.7
+  },
+  {
+    "id": "ambiguo",
+    "prompt": "Quiero una casa bonita y comoda.",
+    "interpretacion": "error",
+    "error": "ValueError: No se especifico el area ni las dimensiones del terreno. Es necesario solicitar esta informacion al usuario.",
+    "tiempo_interpretacion_s": 451.6
+  },
+  {
+    "id": "sin_terreno",
+    "prompt": "Casa con 2 dormitorios, 1 baño, sala y cocina.",
+    "interpretacion": "error",
+    "error": "ValueError: No se especifico el area ni las dimensiones del terreno. Es necesario solicitar esta informacion al usuario.",
+    "tiempo_interpretacion_s": 13.8
+  },
+  {
+    "id": "dormitorio_con_bano",
+    "prompt": "Terreno de 10 x 20 m. 3 dormitorios, el principal con su baño propio, otro baño compartido, sala, cocina y comedor.",
+    "tiempo_interpretacion_s": 198.1,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 10.0,
+      "largo_terreno_m": 20.0,
+      "area_terreno_m2": 200.0,
+      "area_total_vivienda_m2": 112.5,
+      "ambientes": [
+        {
+          "nombre": "dormitorio",
+          "cantidad": 3,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 15.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        },
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "comedor",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [
+        "El dormitorio principal tiene baño propio",
+        "Hay un baño compartido para los otros dos dormitorios"
+      ],
+      "datos_faltantes": [
+        "area_total_vivienda_m2",
+        "numero_pisos"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "dormitorio": 3,
+        "bano": 2,
+        "sala": 1,
+        "cocina": 1,
+        "comedor": 1
+      },
+      "ambientes_obtenidos": {
+        "dormitorio": 3,
+        "bano": 2,
+        "sala": 1,
+        "cocina": 1,
+        "comedor": 1
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        10.0,
+        20.0
+      ],
+      "relaciones_inventadas": 0
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 8,
+    "conectado": true,
+    "ventanas": 16,
+    "puertas": 8,
+    "tiempo_plano_s": 16.3
+  },
+  {
+    "id": "areas_minimas",
+    "prompt": "Terreno de 10 x 20 m. Dormitorios de al menos 14 m2 (serán 2), sala de mínimo 20 m2, cocina, comedor y un baño.",
+    "tiempo_interpretacion_s": 20.3,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 10.0,
+      "largo_terreno_m": 20.0,
+      "area_terreno_m2": 200.0,
+      "area_total_vivienda_m2": 90.91,
+      "ambientes": [
+        {
+          "nombre": "dormitorio",
+          "cantidad": 2,
+          "area_minima_m2": 14.0,
+          "area_objetivo_m2": 14.0
+        },
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": 20.0,
+          "area_objetivo_m2": 20.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.8
+        },
+        {
+          "nombre": "comedor",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.8
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.4
+        }
+      ],
+      "relaciones_adyacencia": [],
+      "observaciones": [],
+      "datos_faltantes": [
+        "numero_pisos",
+        "area_total_vivienda_m2"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "dormitorio": 2,
+        "sala": 1,
+        "cocina": 1,
+        "comedor": 1,
+        "bano": 1
+      },
+      "ambientes_obtenidos": {
+        "dormitorio": 2,
+        "sala": 1,
+        "cocina": 1,
+        "comedor": 1,
+        "bano": 1
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        10.0,
+        20.0
+      ],
+      "areas_incorrectas": [],
+      "areas_ok": true,
+      "relaciones_inventadas": 0
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 6,
+    "conectado": true,
+    "ventanas": 12,
+    "puertas": 6,
+    "tiempo_plano_s": 15.5
+  },
+  {
+    "id": "ingles_mezclado",
+    "prompt": "House on a 10 x 20 meter lot with 2 bedrooms, 1 bathroom, living room and kitchen.",
+    "interpretacion": "error",
+    "error": "ValueError: No se especifico el area ni las dimensiones del terreno. Es necesario solicitar esta informacion al usuario.",
+    "tiempo_interpretacion_s": 7.0
+  },
+  {
+    "id": "texto_largo",
+    "prompt": "Somos una pareja joven y vamos a construir nuestra primera casa. El lote mide 10 metros de frente por 20 de fondo. Queremos 2 dormitorios, uno de ellos con baño, un baño de visitas, una sala amplia, un comedor, una cocina que se conecte con el comedor y un pequeño estudio para trabajar.",
+    "tiempo_interpretacion_s": 200.6,
+    "interpretacion": "ok",
+    "requerimientos": {
+      "tipo_proyecto": "vivienda",
+      "numero_pisos": null,
+      "ancho_terreno_m": 10.0,
+      "largo_terreno_m": 20.0,
+      "area_terreno_m2": 200.0,
+      "area_total_vivienda_m2": 106.82,
+      "ambientes": [
+        {
+          "nombre": "sala",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 18.0
+        },
+        {
+          "nombre": "comedor",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "cocina",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 12.0
+        },
+        {
+          "nombre": "dormitorio",
+          "cantidad": 2,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 15.0
+        },
+        {
+          "nombre": "baño",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        },
+        {
+          "nombre": "baño_visitas",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 6.0
+        },
+        {
+          "nombre": "estudio",
+          "cantidad": 1,
+          "area_minima_m2": null,
+          "area_objetivo_m2": 10.0
+        }
+      ],
+      "relaciones_adyacencia": [
+        {
+          "ambiente_a": "comedor",
+          "ambiente_b": "cocina",
+          "modo": "todos"
+        }
+      ],
+      "observaciones": [
+        "Se recomienda considerar un área de almacenamiento o garaje adicional para una vivienda de primeras veces."
+      ],
+      "datos_faltantes": [
+        "Número de pisos",
+        "Área total deseada de la vivienda",
+        "Dimensiones específicas de los ambientes",
+        "Relaciones de adyacencia adicionales"
+      ]
+    },
+    "evaluacion": {
+      "ambientes_esperados": {
+        "dormitorio": 2,
+        "bano": 2,
+        "sala": 1,
+        "comedor": 1,
+        "cocina": 1,
+        "estudio": 1
+      },
+      "ambientes_obtenidos": {
+        "sala": 1,
+        "comedor": 1,
+        "cocina": 1,
+        "dormitorio": 2,
+        "bano": 2,
+        "estudio": 1
+      },
+      "faltan": [],
+      "cantidad_incorrecta": [],
+      "sobran": [],
+      "ambientes_ok": true,
+      "terreno_ok": true,
+      "terreno_obtenido": [
+        10.0,
+        20.0
+      ],
+      "relaciones_faltan": [],
+      "relaciones_ok": true,
+      "relaciones_inventadas": null
+    },
+    "plano": "ok",
+    "ambientes_en_plano": 8,
+    "conectado": true,
+    "ventanas": 16,
+    "puertas": 5,
+    "tiempo_plano_s": 13.4
+  }
+]
