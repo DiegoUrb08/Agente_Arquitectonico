@@ -9,15 +9,19 @@ Escribe "vivienda de 10×20 m con 2 dormitorios, sala y cocina" y obtén el plan
 
 ```bash
 # 1. Clona el repositorio
-git clone https://github.com/<tu-usuario>/Agente_Arquitectonico.git
+git clone https://github.com/DiegoUrb08/Agente_Arquitectonico.git
 cd Agente_Arquitectonico
 
 # 2. Instala las dependencias
 pip install -r requirements.txt
 
-# 3. Configura el proveedor LLM (ver tabla abajo) y arranca
+# 3. Arranca (la primera vez te guía para elegir un proveedor)
 streamlit run app.py
 ```
+
+Si aún no has configurado un proveedor LLM, la app muestra una pantalla de
+bienvenida con los pasos. También puedes ejecutar `python setup_llm.py`, un
+asistente que crea el archivo `.env` por ti.
 
 ---
 
@@ -160,7 +164,7 @@ src/
 server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
-tests/                  # 213 tests pytest
+tests/                  # 219 tests pytest
 ```
 
 ---

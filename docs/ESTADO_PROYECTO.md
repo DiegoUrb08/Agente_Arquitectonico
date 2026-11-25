@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **213 pruebas pytest pasan, 0 skipped** (~30 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
+- **219 pruebas pytest pasan, 0 skipped** (~35 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -235,6 +235,13 @@
 37. **`ClaudeProvider`** (`providers/claude_provider.py`, SDK `anthropic>=2,<3`): `LLM_PROVIDER=claude` + `ANTHROPIC_API_KEY`; modelo por defecto `claude-opus-5-5` (`LLM_CLAUDE_MODEL` lo cambia). Detalles no obvios: los mensajes `system` se pasan en el campo `system` de la API; no se envía `temperature` (los modelos Claude 5 la rechazan con 400) ni kwargs de otros proveedores; se usa `output_config.effort="low"` porque la tarea es extraer JSON; un `stop_reason` de rechazo se convierte en `LLMProviderError`. Integrado en la factory, `config.py`, `setup_llm.py` (opción 4), la barra lateral, README y `.env.example`. OpenAI se retiró de `config.py` y de la documentación (nunca se implementó). **Verificado solo con mocks: no hay clave de Anthropic en este entorno, así que falta una prueba real.**
 
 **Resultado: 213 tests pasan, 0 skipped.**
+
+## Publicación y primer arranque (2026-11-24)
+
+38. **Pantalla de bienvenida** (`src/ui/bienvenida.py`, `app.py`): cuando falta configurar el proveedor LLM (sin `.env`, clave ausente, `PROXY_URL` vacío o proveedor desconocido), la app ya no lanza una traza de Python: muestra una pantalla con pestañas para Groq, servidor demo, Ollama y Claude, recomienda `python setup_llm.py`, ofrece "reintentar" y deja el error exacto en un desplegable. `tests/test_bienvenida.py` (6 tests, con el `.env` real anulado). Verificado con `streamlit.testing.AppTest`; **no se revisó visualmente en un navegador**.
+39. **Publicación**: repo público con licencia MIT; el README usa ya la URL real del repo y explica el primer arranque.
+
+**Resultado: 219 tests pasan, 0 skipped.**
 
 ## Acciones pendientes (priorizadas) — revisión 2026-11-24
 
