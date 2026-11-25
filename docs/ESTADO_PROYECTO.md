@@ -240,7 +240,7 @@
 
 ### Prioridad alta: antes de publicar en GitHub
 - **Publicar el remoto y verificar el primer run de CI** en GitHub (`.github/workflows/tests.yml`).
-- **Probar `ClaudeProvider` con una clave real** de Anthropic (una llamada de interpretación y una de edición).
+- **Probar `ClaudeProvider` con una clave real** de Anthropic (una llamada de interpretación y una de edición). Sin probar a 2026-11-24: el dueño del proyecto no tiene saldo de API y decidió no gastar. Comprobado sin red: el SDK acepta los parámetros enviados y el cuerpo de la petición coincide con la documentación; README y `.env.example` avisan de que no está probado. Coste estimado de una prueba: ~2-3 centavos con `claude-opus-5-5` por plano generado, ~0,1 centavos con `claude-haiku-5-5`.
 - **Refusal fallbacks de Claude**: la API admite reintentar automáticamente en otro modelo cuando un clasificador de seguridad rechaza la petición (parámetro `fallbacks` en el endpoint beta). No se activó porque no se pudo probar; hoy un rechazo se muestra como error claro.
 
 ### Prioridad media: calidad y robustez

@@ -28,7 +28,7 @@ streamlit run app.py
 | **Groq** *(recomendado)* | 🟢 Gratis, sin tarjeta | 2 min · solo email | ⚡ 100+ tokens/s |
 | **Ollama** *(local)* | 🟢 Gratis | 10 min · descarga ~5 GB | ⚠️ Según tu PC |
 | **Proxy** *(demo)* | 🟢 Gratis* | Pide URL al operador | ⚡ Igual que Groq |
-| **Claude** | 🟡 De pago | Clave API de Anthropic | ⚡ Rápido |
+| **Claude** *(sin probar con la API real)* | 🟡 De pago | Clave API de Anthropic | ⚡ Rápido |
 
 \* Sujeto al límite de peticiones que fije el operador del servidor demo.
 
@@ -98,6 +98,8 @@ Mantén la ventana abierta mientras otros lo usen.
 ---
 
 ## Opción D — Claude (API de Anthropic, de pago)
+
+> **Aún no probado con la API real.** Está implementado y cubierto por tests con un cliente simulado, y se comprobó que la petición que envía coincide con la documentación de la API, pero nadie lo ha ejecutado todavía con una clave real. Si lo pruebas y falla (o funciona), abre un issue. Una suscripción Claude Pro **no** incluye saldo de API: la clave de la consola se factura aparte.
 
 1. Crea una clave en [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) (la cuenta necesita saldo).
 2. Crea `.env`:
