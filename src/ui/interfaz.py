@@ -10,6 +10,7 @@ import streamlit as st
 from src.ai.edit_interpreter import interpretar_edicion
 from src.ai.interpreter import interpretar_instruccion
 from src.ai.ollama_client import OllamaError
+from src.ai.providers import LLMProviderError
 from src.cad.dxf_reader import analizar_dxf
 from src.services.pipeline import (
     editar_plano,
@@ -27,6 +28,7 @@ CARPETA_SALIDA = PROJECT_ROOT / "output"
 ERRORES_CONTROLADOS = (
     ValueError,
     OllamaError,
+    LLMProviderError,
     FileNotFoundError,
     NotImplementedError,
 )
@@ -322,7 +324,6 @@ def _sidebar_proveedor():
         "ollama": "🖥️",
         "proxy": "🌐",
         "claude": "🤖",
-        "openai": "🤖",
         "mock": "🧪",
     }
     icono = iconos.get(provider, "🤖")
@@ -354,6 +355,12 @@ def _sidebar_proveedor():
                 "(https://console.groq.com/keys)"
             )
 
+        elif provider == "claude":
+            modelo = os.getenv("LLM_CLAUDE_MODEL", "claude-opus-5-5")
+            st.info(f"{icono} **Claude** (Anthropic)")
+            st.caption(f"Modelo: `{modelo}`")
+            st.caption("De pago, según el uso de tu cuenta de Anthropic.")
+
         elif provider == "mock":
             st.warning(f"{icono} **Mock** (solo tests)")
             st.caption("Las respuestas son simuladas.")
@@ -375,6 +382,9 @@ def _sidebar_proveedor():
                 "GROQ_API_KEY=gsk_...\n\n"
                 "# Ollama (local)\n"
                 "LLM_PROVIDER=ollama\n\n"
+                "# Claude (de pago)\n"
+                "LLM_PROVIDER=claude\n"
+                "ANTHROPIC_API_KEY=sk-ant-...\n\n"
                 "# Proxy (demo)\n"
                 "LLM_PROVIDER=proxy\n"
                 "PROXY_URL=https://...\n"

@@ -148,11 +148,25 @@ def _provider_proxy_mockeado():
     return p
 
 
+def _provider_claude_mockeado():
+    """ClaudeProvider con cliente Anthropic simulado (sin red)."""
+    from src.ai.providers.claude_provider import ClaudeProvider
+    p = ClaudeProvider(api_key="sk-ant-test")
+    bloque = MagicMock(type="text")
+    bloque.text = "hola"
+    p.client = MagicMock()
+    p.client.messages.create.return_value = MagicMock(
+        stop_reason="end_turn", content=[bloque]
+    )
+    return p
+
+
 PROVIDERS_MOCKEADOS = [
     pytest.param(MockProvider(), id="mock"),
     pytest.param(_provider_groq_mockeado(), id="groq"),
     pytest.param(_provider_ollama_mockeado(), id="ollama"),
     pytest.param(_provider_proxy_mockeado(), id="proxy"),
+    pytest.param(_provider_claude_mockeado(), id="claude"),
 ]
 
 

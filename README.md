@@ -28,7 +28,7 @@ streamlit run app.py
 | **Groq** *(recomendado)* | 🟢 Gratis, sin tarjeta | 2 min · solo email | ⚡ 100+ tokens/s |
 | **Ollama** *(local)* | 🟢 Gratis | 10 min · descarga ~5 GB | ⚠️ Según tu PC |
 | **Proxy** *(demo)* | 🟢 Gratis* | Pide URL al operador | ⚡ Igual que Groq |
-| **Claude / OpenAI** | — | *Aún no implementado* | — |
+| **Claude** | 🟡 De pago | Clave API de Anthropic | ⚡ Rápido |
 
 \* Sujeto al límite de peticiones que fije el operador del servidor demo.
 
@@ -97,18 +97,35 @@ Mantén la ventana abierta mientras otros lo usen.
 
 ---
 
+## Opción D — Claude (API de Anthropic, de pago)
+
+1. Crea una clave en [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) (la cuenta necesita saldo).
+2. Crea `.env`:
+
+```
+LLM_PROVIDER=claude
+ANTHROPIC_API_KEY=sk-ant-...
+# LLM_CLAUDE_MODEL=claude-opus-5-5  ← opcional, debe ser un modelo Claude 5.x
+```
+
+3. Arranca: `streamlit run app.py`
+
+---
+
 ## Variables de entorno disponibles
 
 Copia `.env.example` a `.env` y edita lo que necesites.
 
 | Variable | Descripción | Default |
 |---|---|---|
-| `LLM_PROVIDER` | `groq` / `ollama` / `proxy` / `mock` | `groq` |
+| `LLM_PROVIDER` | `groq` / `ollama` / `proxy` / `claude` / `mock` | `groq` |
 | `GROQ_API_KEY` | Clave de API de Groq | — |
 | `LLM_GROQ_MODEL` | Modelo Groq a usar | `openai/gpt-oss-20b` |
 | `OLLAMA_HOST` | URL del servidor Ollama | `http://localhost:11434` |
 | `PROXY_URL` | URL del servidor proxy | — |
 | `PROXY_ACCESS_TOKEN` | Token de acceso al proxy (opcional) | — |
+| `ANTHROPIC_API_KEY` | Clave de la API de Anthropic | — |
+| `LLM_CLAUDE_MODEL` | Modelo Claude a usar | `claude-opus-5-5` |
 
 ---
 
@@ -132,7 +149,7 @@ Los tests también corren automáticamente en GitHub Actions en cada push.
 app.py                  # Punto de entrada (streamlit run app.py)
 src/
   ai/                   # Interpretación LLM + proveedores
-    providers/          # Groq, Ollama, Proxy, Mock
+    providers/          # Groq, Ollama, Proxy, Claude, Mock
   planning/             # Optimizador CP-SAT de distribución de ambientes
   geometry/             # Geometría Shapely (muros, puertas, ventanas)
   cad/                  # Generación y edición de DXF (ezdxf)
@@ -141,5 +158,5 @@ src/
 server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
-tests/                  # 186 tests pytest
+tests/                  # 213 tests pytest
 ```

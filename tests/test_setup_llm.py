@@ -54,11 +54,24 @@ def test_entrada_vacia_no_escribe_nada(monkeypatch, tmp_path):
     assert not (tmp_path / ".env").exists()
 
 
+def test_claude_guarda_proveedor_y_clave(monkeypatch, tmp_path):
+    monkeypatch.setattr(setup_llm, "ENV_FILE", tmp_path / ".env")
+    _entradas(monkeypatch, "sk-ant-prueba")
+
+    assert setup_llm.setup_claude() is True
+
+    valores = dotenv_values(tmp_path / ".env")
+    assert valores["LLM_PROVIDER"] == "claude"
+    assert valores["ANTHROPIC_API_KEY"] == "sk-ant-prueba"
+
+
 def test_el_menu_solo_ofrece_proveedores_que_get_provider_soporta(monkeypatch, capsys):
-    _entradas(monkeypatch, "4")
+    _entradas(monkeypatch, "5")
 
     setup_llm.main()
 
     salida = capsys.readouterr().out
-    assert "Claude" not in salida
+    for ofrecido in ("Groq", "Ollama", "Proxy", "Claude"):
+        assert ofrecido in salida
+    assert "OpenAI" not in salida
     assert "Mixtral" not in salida

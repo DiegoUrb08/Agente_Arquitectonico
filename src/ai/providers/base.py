@@ -4,6 +4,13 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 
+class LLMProviderError(RuntimeError):
+    """Fallo esperable al consultar un proveedor (red, cuota, clave, rechazo).
+
+    El mensaje está pensado para mostrarse tal cual al usuario.
+    """
+
+
 class LLMProvider(ABC):
     """Interfaz de un proveedor LLM."""
 

@@ -1,7 +1,7 @@
 """Proveedor LLM: Groq API (gratis, sin tarjeta)."""
 
 import os
-from .base import LLMProvider
+from .base import LLMProvider, LLMProviderError
 
 
 class GroqProvider(LLMProvider):
@@ -61,4 +61,4 @@ class GroqProvider(LLMProvider):
             }
 
         except Exception as e:
-            raise RuntimeError(f"Error en Groq API: {e}") from e
+            raise LLMProviderError(f"Error en Groq API: {e}") from e

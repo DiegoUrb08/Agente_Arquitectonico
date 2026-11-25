@@ -2,7 +2,7 @@
 
 import os
 import time
-from .base import LLMProvider
+from .base import LLMProvider, LLMProviderError
 
 
 class OllamaProvider(LLMProvider):
@@ -74,7 +74,7 @@ class OllamaProvider(LLMProvider):
             if intento < self.reintentos:
                 time.sleep(2)
 
-        raise RuntimeError(
+        raise LLMProviderError(
             f"No se pudo conectar a Ollama ({self.host}, modelo '{self._modelo}'): "
             f"{ultimo_error}"
         ) from ultimo_error

@@ -1,7 +1,7 @@
 """Proveedor LLM: Proxy (servidor demo de un operador, sin clave propia)."""
 
 import os
-from .base import LLMProvider
+from .base import LLMProvider, LLMProviderError
 
 
 class ProxyProvider(LLMProvider):
@@ -75,17 +75,19 @@ class ProxyProvider(LLMProvider):
             )
 
         except self.requests.exceptions.RequestException as error:
-            raise RuntimeError(
+            raise LLMProviderError(
                 f"No se pudo conectar al servidor proxy ({self.proxy_url}): {error}"
             ) from error
 
         if respuesta.status_code == 429:
             detalle = respuesta.json().get("error", "Límite de uso alcanzado.")
-            raise RuntimeError(f"Proxy: {detalle}")
+            raise LLMProviderError(f"Proxy: {detalle}")
 
         if respuesta.status_code != 200:
             detalle = respuesta.json().get("error", respuesta.text)
-            raise RuntimeError(f"Error del servidor proxy ({respuesta.status_code}): {detalle}")
+            raise LLMProviderError(
+                f"Error del servidor proxy ({respuesta.status_code}): {detalle}"
+            )
 
         datos = respuesta.json()
         return {"message": datos["message"]}

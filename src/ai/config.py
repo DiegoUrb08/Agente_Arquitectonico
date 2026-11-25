@@ -25,14 +25,12 @@ class LLMConfig:
             return LLMConfig._validar_proxy()
         elif provider_name == "claude":
             return LLMConfig._validar_claude()
-        elif provider_name == "openai":
-            return LLMConfig._validar_openai()
         elif provider_name == "mock":
             return "mock", {}
         else:
             raise ValueError(
                 f"Proveedor LLM desconocido: {provider_name}. "
-                f"Opciones: groq, ollama, claude, openai, mock"
+                f"Opciones: groq, ollama, proxy, claude, mock"
             )
 
     @staticmethod
@@ -84,25 +82,11 @@ class LLMConfig:
             raise ValueError(
                 "\n❌ ANTHROPIC_API_KEY no configurada.\n"
                 "Para usar Claude:\n"
-                "  1. Visita: https://console.anthropic.com/keys\n"
+                "  1. Visita: https://console.anthropic.com/settings/keys\n"
                 "  2. Genera una clave\n"
-                "  3. Copia en .env: ANTHROPIC_API_KEY=sk_...\n"
+                "  3. Copia en .env: ANTHROPIC_API_KEY=sk-ant-...\n"
             )
         return "claude", {"api_key": api_key}
-
-    @staticmethod
-    def _validar_openai() -> tuple[str, dict]:
-        """Valida configuración de OpenAI."""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "\n❌ OPENAI_API_KEY no configurada.\n"
-                "Para usar OpenAI:\n"
-                "  1. Visita: https://platform.openai.com/api-keys\n"
-                "  2. Genera una clave\n"
-                "  3. Copia en .env: OPENAI_API_KEY=sk_...\n"
-            )
-        return "openai", {"api_key": api_key}
 
     @staticmethod
     def mensaje_bienvenida() -> str:
@@ -113,7 +97,7 @@ class LLMConfig:
             return (
                 "🚀 Agente Arquitectónico con Groq (gratis)\n"
                 "━" * 40 + "\n"
-                "Proveedor: Groq Mixtral 8x7B\n"
+                "Proveedor: Groq (openai/gpt-oss-20b)\n"
                 "Precio: Gratis, sin tarjeta de crédito\n"
                 "Velocidad: 100+ tokens/s\n"
             )
@@ -134,6 +118,14 @@ class LLMConfig:
                 f"Servidor: {proxy_url}\n"
                 "Precio: Gratis, sujeto al límite del operador\n"
                 "Nota: para uso ilimitado, usa tu propia clave Groq\n"
+            )
+        elif provider == "claude":
+            modelo = os.getenv("LLM_CLAUDE_MODEL", "claude-opus-5-5")
+            return (
+                "🚀 Agente Arquitectónico con Claude (API de Anthropic)\n"
+                "━" * 40 + "\n"
+                f"Modelo: {modelo}\n"
+                "Precio: de pago, según uso de tu cuenta de Anthropic\n"
             )
         elif provider == "mock":
             return (

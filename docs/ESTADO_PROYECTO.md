@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **186 pruebas pytest pasan, 0 skipped** (~25 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
+- **213 pruebas pytest pasan, 0 skipped** (~30 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -229,17 +229,20 @@
 32. **`OllamaProvider` ignoraba `temperature`**: el parámetro se aceptaba pero no se enviaba a Ollama. Ahora se reenvía en `options` (el intérprete usa 0,1 y la edición 0).
 33. **Tests rehabilitados** (`tests/test_ai.py`): los 3 tests de validación de errores y el de reintentos estaban en `skip` por el mismo patch erróneo de la Fase 3 (apuntaban a `src.ai.providers.get_provider`); además `test_interpretar_edicion_valida` llamaba al Ollama real (20 s y fallaría en CI). Corregido el target del patch. Se eliminaron los 2 tests de "[LLM] N intentos" (esa nota ya no existe), se repusieron los de fallback regex del terreno (4 casos, verificados: fallan sin el fallback) y se añadieron tests de reintentos y temperatura de `OllamaProvider`, que no tenía ninguno.
 34. **`setup_llm.py`**: mostraba un modelo retirado; sobrescribía el `.env` completo (habría borrado `GROQ_API_KEY` y `PROXY_ACCESS_TOKEN`) y escribía en el directorio actual. Ahora actualiza solo las claves indicadas, en el `.env` de la raíz. Se retiró la opción Claude, que `get_provider` no soporta. Nuevo `tests/test_setup_llm.py` (5 tests, sobre un `.env` temporal).
-35. **Documentación alineada**: README y `.env.example` indican que Claude/OpenAI aún no están implementados.
+35. **Documentación alineada**: README y `.env.example` dejaron de anunciar proveedores inexistentes (ver punto 37 para el estado final de Claude).
 
-**Resultado: 186 tests pasan, 0 skipped.**
+36. **`LLMProviderError`** (`providers/base.py`, subclase de `RuntimeError`): Groq, Ollama, el proxy y Claude la lanzan ante fallos esperables (red, cuota, clave, rechazo) y la UI la incluye en `ERRORES_CONTROLADOS`. Antes eran `RuntimeError` genéricos, así que al llegar al límite del proxy (429) el usuario veía "Error inesperado" con traza en lugar del mensaje claro.
+37. **`ClaudeProvider`** (`providers/claude_provider.py`, SDK `anthropic>=2,<3`): `LLM_PROVIDER=claude` + `ANTHROPIC_API_KEY`; modelo por defecto `claude-opus-5-5` (`LLM_CLAUDE_MODEL` lo cambia). Detalles no obvios: los mensajes `system` se pasan en el campo `system` de la API; no se envía `temperature` (los modelos Claude 5 la rechazan con 400) ni kwargs de otros proveedores; se usa `output_config.effort="low"` porque la tarea es extraer JSON; un `stop_reason` de rechazo se convierte en `LLMProviderError`. Integrado en la factory, `config.py`, `setup_llm.py` (opción 4), la barra lateral, README y `.env.example`. OpenAI se retiró de `config.py` y de la documentación (nunca se implementó). **Verificado solo con mocks: no hay clave de Anthropic en este entorno, así que falta una prueba real.**
+
+**Resultado: 213 tests pasan, 0 skipped.**
 
 ## Acciones pendientes (priorizadas) — revisión 2026-11-24
 
 ### Prioridad alta: antes de publicar en GitHub
 - **Revocar la clave de Groq pegada en el chat** (`gsk_GoWQ…`) en console.groq.com/keys. Sigue sin confirmarse.
 - **Publicar el remoto y verificar el primer run de CI** en GitHub (`.github/workflows/tests.yml`).
-- **Errores de los proveedores en la UI**: Groq, Ollama y el proxy lanzan `RuntimeError`, que la UI no trata como error esperable (`ERRORES_CONTROLADOS`). Al llegar al límite del proxy (429) el usuario vería "Error inesperado" con traza en vez del mensaje claro. Solución prevista: una excepción propia `LLMProviderError(RuntimeError)` en `providers/base.py` y añadirla a `ERRORES_CONTROLADOS`.
-- **Claude/OpenAI**: `config.py` los valida pero `get_provider` no los implementa. Decidir entre implementar `ClaudeProvider`/`OpenAIProvider` o quitar sus rastros de `config.py`.
+- **Probar `ClaudeProvider` con una clave real** de Anthropic (una llamada de interpretación y una de edición).
+- **Refusal fallbacks de Claude**: la API admite reintentar automáticamente en otro modelo cuando un clasificador de seguridad rechaza la petición (parámetro `fallbacks` en el endpoint beta). No se activó porque no se pudo probar; hoy un rechazo se muestra como error claro.
 
 ### Prioridad media: calidad y robustez
 - **Proxy con URL fija**: named tunnel de Cloudflare con dominio propio, o despliegue en Render. Con el túnel rápido la URL cambia en cada reinicio.

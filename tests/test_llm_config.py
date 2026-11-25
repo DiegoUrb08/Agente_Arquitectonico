@@ -10,6 +10,30 @@ from src.ai.config import LLMConfig
 class TestLLMConfigValidation:
     """Tests para validación de configuración."""
 
+    def test_validar_provider_claude_sin_key_lanza_error(self):
+        with patch.dict(os.environ, {"LLM_PROVIDER": "claude"}, clear=True):
+            with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+                LLMConfig.validar_provider()
+
+    def test_validar_provider_claude_con_key(self):
+        with patch.dict(os.environ, {
+            "LLM_PROVIDER": "claude",
+            "ANTHROPIC_API_KEY": "sk-ant-test",
+        }, clear=True):
+            nombre, config = LLMConfig.validar_provider()
+            assert nombre == "claude"
+            assert config["api_key"] == "sk-ant-test"
+
+    def test_mensaje_bienvenida_claude_muestra_el_modelo(self):
+        with patch.dict(os.environ, {"LLM_PROVIDER": "claude"}, clear=True):
+            assert "claude-opus-5-5" in LLMConfig.mensaje_bienvenida()
+
+    def test_openai_ya_no_es_un_proveedor_valido(self):
+        """get_provider nunca lo implementó; validarlo solo daba falsas esperanzas."""
+        with patch.dict(os.environ, {"LLM_PROVIDER": "openai"}, clear=True):
+            with pytest.raises(ValueError, match="desconocido"):
+                LLMConfig.validar_provider()
+
     def test_validar_provider_groq_sin_key_lanza_error(self):
         """Groq sin GROQ_API_KEY debe lanzar ValueError claro."""
         with patch.dict(os.environ, {"LLM_PROVIDER": "groq"}, clear=True):

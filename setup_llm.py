@@ -7,6 +7,7 @@ from dotenv import set_key
 
 ENV_FILE = Path(__file__).resolve().parent / ".env"
 MODELO_GROQ = "openai/gpt-oss-20b"
+MODELO_CLAUDE = "claude-opus-5-5"
 
 
 def _guardar_env(**valores: str) -> None:
@@ -80,6 +81,27 @@ def setup_proxy():
     return True
 
 
+def setup_claude():
+    """Configurar Claude (API de Anthropic, de pago)."""
+    print("\n🚀 Configuración de Claude (API de Anthropic, de pago)\n" + "=" * 50)
+    print("Pasos:")
+    print("  1. Abre: https://console.anthropic.com/settings/keys")
+    print("  2. Crea una API key (la cuenta necesita saldo)")
+    print("  3. Pégala aquí")
+    print()
+    api_key = input("Pega tu ANTHROPIC_API_KEY: ").strip()
+
+    if not api_key:
+        print("❌ API key vacía")
+        return False
+
+    _guardar_env(LLM_PROVIDER="claude", ANTHROPIC_API_KEY=api_key)
+    print("\n✅ Claude configurado en .env")
+    print(f"   Modelo: {MODELO_CLAUDE}")
+    print("   Precio: de pago, según uso")
+    return True
+
+
 def main():
     """Menu principal."""
     print("\n" + "=" * 60)
@@ -89,17 +111,23 @@ def main():
     print("  1️⃣  Groq (Recomendado - Gratis, sin tarjeta, cuota propia)")
     print("  2️⃣  Ollama (Local - Requiere instalación)")
     print("  3️⃣  Proxy (Demo de un tercero - Sin crear cuenta, con límite)")
-    print("  4️⃣  Salir")
+    print("  4️⃣  Claude (API de Anthropic - De pago)")
+    print("  5️⃣  Salir")
     print()
 
-    choice = input("Elige una opción (1-4): ").strip()
+    choice = input("Elige una opción (1-5): ").strip()
 
-    acciones = {"1": setup_groq, "2": setup_ollama, "3": setup_proxy}
+    acciones = {
+        "1": setup_groq,
+        "2": setup_ollama,
+        "3": setup_proxy,
+        "4": setup_claude,
+    }
 
     if choice in acciones:
         if acciones[choice]():
             print("\n🎉 Setup completo. Ejecuta: streamlit run app.py")
-    elif choice == "4":
+    elif choice == "5":
         print("👋 Adiós")
     else:
         print("❌ Opción no válida")

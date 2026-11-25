@@ -1,7 +1,8 @@
 """Proveedores LLM: abstracción para múltiples backends."""
 
 import os
-from .base import LLMProvider
+from .base import LLMProvider, LLMProviderError
+from .claude_provider import ClaudeProvider
 from .groq_provider import GroqProvider
 from .ollama_provider import OllamaProvider
 from .mock_provider import MockProvider
@@ -23,16 +24,18 @@ def get_provider(provider_name: str | None = None) -> LLMProvider:
         return OllamaProvider()
     elif provider_name == "proxy":
         return ProxyProvider()
+    elif provider_name == "claude":
+        return ClaudeProvider()
     elif provider_name == "mock":
         return MockProvider()
     else:
         raise ValueError(
             f"Proveedor LLM desconocido: {provider_name}. "
-            f"Opciones: groq, ollama, proxy, mock"
+            f"Opciones: groq, ollama, proxy, claude, mock"
         )
 
 
 __all__ = [
-    "LLMProvider", "GroqProvider", "OllamaProvider", "ProxyProvider",
-    "MockProvider", "get_provider",
+    "LLMProvider", "LLMProviderError", "ClaudeProvider", "GroqProvider",
+    "OllamaProvider", "ProxyProvider", "MockProvider", "get_provider",
 ]
