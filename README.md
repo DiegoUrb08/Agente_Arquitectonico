@@ -162,3 +162,9 @@ server/
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
 tests/                  # 213 tests pytest
 ```
+
+---
+
+## Licencia
+
+[MIT](LICENSE)
