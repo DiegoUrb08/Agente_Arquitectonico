@@ -6,7 +6,7 @@
 - `.venv` funcional: Python 3.14.7, streamlit 1.67, ollama 0.6.3, ortools 9.15, shapely 2.2, ezdxf 1.4.5, pydantic 2.14, pytest 9.2.
 - Git 2.56.1 instalado; repositorio local en rama `main` (sin remoto; nada publicado). `.gitignore` excluye `.venv`, cachés, `.env`, credenciales y `output/`.
 - `requirements.txt` (dependencias directas + pytest) y `pytest.ini`.
-- Modelo LLM: `qwen3:8b`. Arranque: `streamlit run app.py`.
+- Proveedor LLM por defecto: Groq (`openai/gpt-oss-20b`). Alternativa local: Ollama con `qwen3:8b`. Arranque: `streamlit run app.py`.
 
 ## Arquitectura actual
 | Paquete | Archivos | Función |
@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **114 pruebas pytest, todas pasan** (~13 s): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
+- **168 pruebas pytest pasan, 4 skipped** (~45 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -72,11 +72,11 @@
 
 **Hallazgos registrados para corrección futura:**
 
-1. **Ambientes fuera de catálogo se aceptan** – "piscina" en el prompt produjo `area_objetivo: 8 m²` (valor válido para Pydantic) y el plano se generó con ese ambiente. El mecanismo `mensaje_amigable` solo actúa sobre `ValidationError`; no hay rechazo cuando el modelo asigna un área válida a un ambiente no soportado. Solución pendiente: lista blanca de ambientes válidos que el `layout_optimizer` o el intérprete compruebe antes de optimizar.
+1. **Ambientes fuera de catálogo se aceptan** – "piscina" en el prompt produjo `area_objetivo: 8 m²` (valor válido para Pydantic) y el plano se generó con ese ambiente. *Resuelto: ver "Correcciones del benchmark", punto 1.*
 
-2. **Extracción intermitente del terreno** – 3 prompts con dimensiones explícitas fallaron (`minimo` "6 x 10 metros", `habitantes` "11 x 20 m", `ingles_mezclado` "10 x 20 meter lot"). El mismo texto en otros casos sí funciona. Causa probable: el modelo omite las dimensiones cuando el texto tiene información que distrae (familia de 5 personas, departamento pequeño, inglés). Solución pendiente: reintentar la extracción si `ancho_terreno_m` o `largo_terreno_m` llegan nulos pero el prompt contiene patrones numéricos; o añadir una segunda pasada de extracción centrada solo en el terreno.
+2. **Extracción intermitente del terreno** – 3 prompts con dimensiones explícitas fallaron (`minimo` "6 x 10 metros", `habitantes` "11 x 20 m", `ingles_mezclado` "10 x 20 meter lot"). El mismo texto en otros casos sí funciona. Causa probable: el modelo omite las dimensiones cuando el texto tiene información que distrae (familia de 5 personas, departamento pequeño, inglés). *Resuelto: ver "Correcciones del benchmark", punto 2.*
 
-3. **Tiempos extremos** – el caso "ambiguo" tardó 452 s (≈ 8 min). Los reintentos internos de Ollama no quedan registrados en el benchmark. Solución pendiente: registrar número de reintentos y tiempo por intento en la respuesta del intérprete.
+3. **Tiempos extremos** – el caso "ambiguo" tardó 452 s (≈ 8 min). *Resuelto: ver "Correcciones del benchmark", punto 3.*
 
 ## Limitaciones conocidas
 - `editar_plano` regenera muros, puertas, aberturas y mobiliario (se recoloca con las plantillas, no se conservan posiciones previas) y, si un ambiente que actúa de «nudo» cambia mucho de tamaño, puede quedar sin pared compartida con algún vecino (se avisa; no se reubican los vecinos).
@@ -84,7 +84,7 @@
 - Las ventanas tienen ancho fijo por tipo de ambiente (sin altura de alféizar ni orientación solar) y se colocan en cualquier pared exterior, incluso la que da a un hueco interior entre ambientes.
 - El editor solo opera con habitaciones rectangulares y DXF en metros.
 - En distribuciones muy compactas, `modificar_area` y `mover_ambiente` suelen rechazar el cambio por falta de espacio (comportamiento correcto, pero limitante).
-- Sin remoto Git ni CI.
+- Sin remoto Git publicado todavía; el workflow de CI existe pero no se ha ejecutado en GitHub.
 
 ## Correcciones del benchmark implementadas
 1. ~~**Lista blanca de ambientes**~~ **Implementado:** `AMBIENTES_VALIDOS` en `reglas_ambientes.py` (15 tipos); `_validar_ambientes` en `layout_optimizer.py` rechaza tipos fuera de catálogo antes de CP-SAT con mensaje claro. "piscina" se rechaza ahora.
@@ -127,15 +127,15 @@
 - `.github/workflows/tests.yml`: corre en push/PR a `main`, Python 3.12, `LLM_PROVIDER=mock`. ✅
 - Bugs de test corregidos: patch apuntaba a `src.ai.providers.get_provider` en lugar de `src.ai.interpreter.get_provider` (2 tests); fixture del proxy server no limpiaba `PROXY_ACCESS_TOKEN` del entorno (5 tests); UI test no forzaba `LLM_PROVIDER=mock` (1 test). ✅
 
-### Fase 4: Documentación y UI (1 hora)
-- `README.md`: tabla de setup (Groq gratis, Ollama local, Claude/OpenAI con clave).
-- Instrucciones de signup Groq (1 min, sin tarjeta).
-- `src/ui/interfaz.py`: mostrar provider actual y mensaje si falta configuración.
+### Fase 4: Documentación y UI (1 hora) — ✅ COMPLETO (ver "Fase 4 implementada")
+- `README.md`: tabla de setup (Groq gratis, Ollama local, Claude/OpenAI con clave). ✅
+- Instrucciones de signup Groq (1 min, sin tarjeta). ✅
+- `src/ui/interfaz.py`: mostrar provider actual y mensaje si falta configuración. ✅
 
 ### Tabla comparativa de proveedores
 | Proveedor | Costo | Setup | Velocidad | Modelos |
 |-----------|-------|-------|-----------|---------|
-| **Groq** (default) | 🟢 Gratis | 2 min signup | 🚀 Ultra rápido | Mixtral, LLaMA 2 |
+| **Groq** (default) | 🟢 Gratis | 2 min signup | 🚀 Ultra rápido | openai/gpt-oss-20b (default), openai/gpt-oss-120b |
 | **Ollama** (local) | 🟢 Gratis | 10 min + 2 GB | ⚠️ Según PC | qwen3:8b, otros |
 | **Claude** | 🟡 $5 créditos | Clave API | ⚡ Rápido | Opus, Sonnet, Haiku |
 | **OpenAI** | 🟡 $5 créditos | Clave API | ⚡ Rápido | GPT-4, 3.5 |
@@ -145,7 +145,7 @@
 - **Sin descargas** (API remoto).
 - Velocidad: 100+ tokens/s (más rápido que OpenAI).
 - Rate limits generosos: 8,000 req/min.
-- Modelos open: Mixtral 8x7B (comparable a GPT-3.5), LLaMA 2 70B.
+- Modelos vigentes: `openai/gpt-oss-20b` (default). Mixtral 8x7B y LLaMA 2 fueron retirados del catálogo de Groq (ver punto 24).
 
 ## Ampliaciones implementadas (Fase 1: Multi-LLM)
 
@@ -223,6 +223,26 @@
 
 30. **server/README.md** actualizado: documenta el lanzador `arrancar.py` con túnel Cloudflare como opción principal (sin cuenta de hosting), sus limitaciones (URL efímera, PC encendido), y mantiene la opción de Render como alternativa siempre activa.
 
-## Siguientes etapas
-1. BIM export (IfcOpenShell o gbXML).
-2. URL fija para el proxy (Cloudflare named tunnel con dominio propio).
+## Acciones pendientes (priorizadas) — revisión 2026-11-24
+
+### Prioridad alta: antes de publicar en GitHub
+- **Revocar la clave de Groq pegada en el chat** (`gsk_GoWQ…`) en console.groq.com/keys. Sigue sin confirmarse.
+- **Corregir `setup_llm.py`**: todavía imprime "Modelo: Mixtral 8x7B" (retirado) y su menú (1 Groq, 2 Ollama, 3 Claude, 4 Salir) no coincide con la opción de proxy descrita en el punto 23.
+- **Publicar el remoto y verificar el primer run de CI** en GitHub (`.github/workflows/tests.yml`).
+- **Decidir sobre los cambios sin commitear** de esta revisión de documentación, si se quieren versionar.
+
+### Prioridad media: calidad y robustez
+- **Rehabilitar los 4 tests `skip` de `tests/test_ai.py`** (errores de validación, reintentos y fallback regex). Hoy no se verifican; el fallback regex del terreno no tiene test activo.
+- **Proxy con URL fija**: named tunnel de Cloudflare con dominio propio, o despliegue en Render. Con el túnel rápido la URL cambia en cada reinicio.
+- **Rate limit en memoria**: se reinicia con el proceso y es válido solo para un proceso. Suficiente para la demo; no escala a varios workers.
+- **Re-ejecutar el benchmark con Groq** (`scripts/benchmark_llm.py`) para comparar calidad y tiempos frente a Qwen3:8b local. Es una sugerencia, no un hallazgo previo.
+
+### Funcionalidad del plano (de "Limitaciones conocidas")
+- `editar_dxf` (edición directa) no recalcula muros ni puertas.
+- `editar_plano` no reubica los vecinos cuando un ambiente "nudo" cambia mucho de tamaño.
+- Ventanas: sin altura de alféizar ni orientación solar; se colocan incluso en un muro que da a un hueco interior.
+- El editor solo opera con habitaciones rectangulares y DXF en metros.
+- En distribuciones compactas, `modificar_area` y `mover_ambiente` rechazan cambios por falta de espacio.
+
+### Nuevas funciones
+- **Exportación BIM** (IfcOpenShell o gbXML). Etapa planeada desde el inicio del proyecto; sin iniciar.
