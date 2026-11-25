@@ -215,6 +215,14 @@
 
 **Resultado: 168 tests pasan, 4 skipped (pre-existentes), 0 fallos.**
 
+## Fase 4 implementada (2026-11-24)
+
+28. **Sidebar de proveedor en la UI** (`src/ui/interfaz.py`, función `_sidebar_proveedor`): muestra en la barra lateral el proveedor activo (Groq, Ollama, Proxy, mock) con nombre, modelo e info relevante. Para proxy incluye advertencia de límite y enlace a Groq. Incluye un expander con instrucciones de `.env` para cambiar de proveedor sin salir de la app.
+
+29. **README.md** (raíz del proyecto): inicio rápido en 3 pasos, tabla comparativa de proveedores, guías paso a paso para Groq (recomendado), Ollama y Proxy; documentación del lanzador `server/arrancar.py`; tabla de variables de entorno; instrucciones para correr tests; mapa de la estructura del proyecto.
+
+30. **server/README.md** actualizado: documenta el lanzador `arrancar.py` con túnel Cloudflare como opción principal (sin cuenta de hosting), sus limitaciones (URL efímera, PC encendido), y mantiene la opción de Render como alternativa siempre activa.
+
 ## Siguientes etapas
-1. Fase 4: UI mejorada con selector de proveedor.
-2. BIM export (IfcOpenShell o gbXML).
+1. BIM export (IfcOpenShell o gbXML).
+2. URL fija para el proxy (Cloudflare named tunnel con dominio propio).

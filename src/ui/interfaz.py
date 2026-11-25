@@ -1,6 +1,7 @@
 """Interfaz Streamlit. Se lanza con:  streamlit run app.py"""
 
 import logging
+import os
 import traceback
 from pathlib import Path
 
@@ -312,6 +313,76 @@ def seccion_editar():
 # PUNTO DE ENTRADA
 # ============================================================
 
+def _sidebar_proveedor():
+    """Muestra información del proveedor LLM activo en la barra lateral."""
+    provider = os.getenv("LLM_PROVIDER", "groq").lower()
+
+    iconos = {
+        "groq": "⚡",
+        "ollama": "🖥️",
+        "proxy": "🌐",
+        "claude": "🤖",
+        "openai": "🤖",
+        "mock": "🧪",
+    }
+    icono = iconos.get(provider, "🤖")
+
+    with st.sidebar:
+        st.markdown("### Proveedor LLM")
+
+        if provider == "groq":
+            modelo = os.getenv("LLM_GROQ_MODEL", "openai/gpt-oss-20b")
+            st.success(f"{icono} **Groq** (gratis)")
+            st.caption(f"Modelo: `{modelo}`")
+            st.caption("Sin tarjeta de crédito · 100+ tokens/s")
+
+        elif provider == "ollama":
+            host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+            modelo = os.getenv("LLM_OLLAMA_MODEL", "qwen3:8b")
+            st.info(f"{icono} **Ollama** (local)")
+            st.caption(f"Host: `{host}`")
+            st.caption(f"Modelo: `{modelo}`")
+
+        elif provider == "proxy":
+            proxy_url = os.getenv("PROXY_URL", "")
+            url_corta = proxy_url[:40] + "…" if len(proxy_url) > 40 else proxy_url
+            st.info(f"{icono} **Modo proxy** (demo)")
+            st.caption(f"Servidor: `{url_corta}`")
+            st.warning(
+                "Sujeto al límite del operador.  \n"
+                "Para uso ilimitado: [obtén tu clave Groq gratis]"
+                "(https://console.groq.com/keys)"
+            )
+
+        elif provider == "mock":
+            st.warning(f"{icono} **Mock** (solo tests)")
+            st.caption("Las respuestas son simuladas.")
+
+        else:
+            modelo_env = os.getenv(f"LLM_{provider.upper()}_MODEL", "")
+            st.info(f"{icono} **{provider.upper()}**")
+            if modelo_env:
+                st.caption(f"Modelo: `{modelo_env}`")
+
+        st.divider()
+
+        with st.expander("¿Cómo cambiar de proveedor?"):
+            st.markdown(
+                "Edita el archivo `.env` en la raíz del proyecto:\n\n"
+                "```\n"
+                "# Groq (gratis, recomendado)\n"
+                "LLM_PROVIDER=groq\n"
+                "GROQ_API_KEY=gsk_...\n\n"
+                "# Ollama (local)\n"
+                "LLM_PROVIDER=ollama\n\n"
+                "# Proxy (demo)\n"
+                "LLM_PROVIDER=proxy\n"
+                "PROXY_URL=https://...\n"
+                "```\n\n"
+                "Luego reinicia la app."
+            )
+
+
 def main():
 
     st.set_page_config(
@@ -319,6 +390,8 @@ def main():
         page_icon="🏠",
         layout="wide",
     )
+
+    _sidebar_proveedor()
 
     st.title("Agente Arquitectónico")
     st.write(
