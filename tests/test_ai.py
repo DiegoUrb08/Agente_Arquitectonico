@@ -17,7 +17,7 @@ def _mockear_provider(monkeypatch, datos):
     mock_provider = MagicMock()
     mock_provider.chat.return_value = _respuesta(datos)
     monkeypatch.setattr(
-        "src.ai.providers.get_provider",
+        "src.ai.interpreter.get_provider",
         lambda provider_name=None: mock_provider
     )
 
@@ -224,7 +224,7 @@ def test_interpretar_instruccion_sin_reintentos_no_anota(monkeypatch):
     mock_provider = MagicMock()
     mock_provider.chat.return_value = _respuesta(datos)
     monkeypatch.setattr(
-        "src.ai.providers.get_provider",
+        "src.ai.interpreter.get_provider",
         lambda provider_name=None: mock_provider
     )
     req = interpreter.interpretar_instruccion("casa 10x20 con sala")

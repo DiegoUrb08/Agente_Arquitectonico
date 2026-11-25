@@ -98,6 +98,7 @@ class TestProxyServerIntegration:
         monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
         monkeypatch.setenv("RATE_LIMIT_REQUESTS", "2")
         monkeypatch.setenv("RATE_LIMIT_WINDOW_S", "3600")
+        monkeypatch.delenv("PROXY_ACCESS_TOKEN", raising=False)
         import importlib
         from server import proxy_server
         importlib.reload(proxy_server)

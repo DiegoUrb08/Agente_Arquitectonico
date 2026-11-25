@@ -248,8 +248,12 @@ def test_exportar_csv_areas_escribe_archivo(tmp_path):
     assert "area_m2" in contenido
 
 
-def test_la_interfaz_arranca_sin_excepciones():
+def test_la_interfaz_arranca_sin_excepciones(monkeypatch):
     from streamlit.testing.v1 import AppTest
+
+    # Forzar mock provider para que el test no dependa del .env del operador
+    monkeypatch.setenv("LLM_PROVIDER", "mock")
+    monkeypatch.delenv("PROXY_URL", raising=False)
 
     raiz = Path(__file__).resolve().parent.parent
     at = AppTest.from_file(str(raiz / "app.py"), default_timeout=30).run()

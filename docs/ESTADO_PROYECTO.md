@@ -121,11 +121,11 @@
 - `setup_llm.py`: script interactivo de primer setup ✅
 - `.gitignore` ya excluye `.env` ✅
 
-### Fase 3: Tests multi-proveedor (1.5 horas)
-- Crear `tests/test_ai_providers.py` con tests para Groq, Ollama, mock (simulado siempre disponible).
-- Parametrizar tests: `@pytest.mark.parametrize("provider", ["mock", "groq"])`.
-- Mock provider devuelve respuestas hardcoded (sin red).
-- CI/GitHub Actions: correr tests con `LLM_PROVIDER=mock` (sin credenciales).
+### Fase 3: Tests multi-proveedor (1.5 horas) — ✅ COMPLETO
+- `tests/test_ai_providers.py` ampliado con `TestContratosProveedores` (24 tests parametrizados sobre mock, groq, ollama y proxy mockeados) y `TestFactoryEnv` (2 tests). ✅
+- Backends simulados sin red ni credenciales reales (todos pasan en CI). ✅
+- `.github/workflows/tests.yml`: corre en push/PR a `main`, Python 3.12, `LLM_PROVIDER=mock`. ✅
+- Bugs de test corregidos: patch apuntaba a `src.ai.providers.get_provider` en lugar de `src.ai.interpreter.get_provider` (2 tests); fixture del proxy server no limpiaba `PROXY_ACCESS_TOKEN` del entorno (5 tests); UI test no forzaba `LLM_PROVIDER=mock` (1 test). ✅
 
 ### Fase 4: Documentación y UI (1 hora)
 - `README.md`: tabla de setup (Groq gratis, Ollama local, Claude/OpenAI con clave).
@@ -202,7 +202,19 @@
     - **Hallazgo:** el modelo default `mixtral-8x7b-32768` está descontinuado en Groq (`model_decommissioned`, HTTP 400). Confirmado contra `/v1/models` con la clave real: el catálogo vigente no incluye mixtral ni llama2/3 clásicos. Nuevo default: `openai/gpt-oss-20b` (responde JSON limpio, rápido).
     - **Bug encontrado en `.gitignore`:** el patrón `.env.*` excluía también `.env.example` (la plantilla pública sin secretos), por lo que nunca se había versionado pese a crearse en la Fase 2. Corregido con `!.env.example`.
 
+## Fase 3 implementada (2026-11-24)
+
+25. **Tests de contratos multi-proveedor** (`tests/test_ai_providers.py`): clase `TestContratosProveedores` con 6 × 4 tests parametrizados (`mock`, `groq`, `ollama`, `proxy`) que verifican la interfaz `LLMProvider` (nombre, modelo, chat, estructura de respuesta) usando backends simulados sin red. `TestFactoryEnv` verifica que la factory lee `LLM_PROVIDER` del entorno.
+
+26. **GitHub Actions CI** (`.github/workflows/tests.yml`): disparado en push y PR a `main`; Python 3.12; instala `requirements.txt` + `server/requirements.txt`; corre `pytest tests/` con `LLM_PROVIDER=mock`. No requiere credenciales.
+
+27. **Corrección de 8 tests pre-existentes rotos** (descubiertos al correr la suite completa):
+    - 2 tests en `test_ai.py` usaban `src.ai.providers.get_provider` como target del patch, pero `interpreter.py` importa con `from ... import`, así que el patch no tenía efecto; corregido a `src.ai.interpreter.get_provider`.
+    - 5 tests de `TestProxyServerIntegration` fallaban cuando se corrían después de otros tests que cargaban `.env` y dejaban `PROXY_ACCESS_TOKEN` en `os.environ`; corregido añadiendo `monkeypatch.delenv("PROXY_ACCESS_TOKEN", raising=False)` al fixture.
+    - 1 test de UI (`test_la_interfaz_arranca_sin_excepciones`) fallaba con `.env` real que tiene `LLM_PROVIDER=proxy` sin `PROXY_URL`; corregido forzando `LLM_PROVIDER=mock` en el test.
+
+**Resultado: 168 tests pasan, 4 skipped (pre-existentes), 0 fallos.**
+
 ## Siguientes etapas
-1. Fase 3: Tests y CI multiproveedor.
-2. Fase 4: UI mejorada con selector de proveedor.
-3. BIM export (IfcOpenShell o gbXML).
+1. Fase 4: UI mejorada con selector de proveedor.
+2. BIM export (IfcOpenShell o gbXML).
