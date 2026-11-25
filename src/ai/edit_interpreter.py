@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 from src.ai.errores import mensaje_amigable
-from src.ai.ollama_client import MODEL_NAME, chat_con_reintentos
+from src.ai.providers import get_provider
 
 
 # ==========================================
@@ -121,8 +121,19 @@ def interpretar_edicion(instruccion: str) -> EditRequest:
     9. Devuelve una estructura compatible con el esquema proporcionado.
     """
 
-    respuesta = chat_con_reintentos(
-        model=MODEL_NAME,
+    esquema = EditRequest.model_json_schema()
+    mensaje_sistema += (
+        "\n    Responde exclusivamente con un objeto JSON que cumpla este "
+        "esquema, sin texto adicional ni bloques de codigo:\n    "
+        + json.dumps(esquema, ensure_ascii=False)
+    )
+
+    provider = get_provider()
+
+    # Ollama admite salida estructurada nativa; el resto depende del prompt.
+    extra = {"format": esquema} if provider.nombre == "ollama" else {}
+
+    respuesta = provider.chat(
         messages=[
             {
                 "role": "system",
@@ -133,10 +144,8 @@ def interpretar_edicion(instruccion: str) -> EditRequest:
                 "content": instruccion
             }
         ],
-        format=EditRequest.model_json_schema(),
-        options={
-            "temperature": 0
-        }
+        temperature=0,
+        **extra,
     )
 
     contenido = respuesta["message"]["content"]

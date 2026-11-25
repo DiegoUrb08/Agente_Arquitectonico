@@ -12,14 +12,25 @@ def _respuesta(datos):
     return {"message": {"content": json.dumps(datos)}}
 
 
-def _mockear_provider(monkeypatch, datos):
-    """Helper: mockea el provider para que devuelva datos en JSON."""
+def _mockear_texto(monkeypatch, texto, modulo="interpreter"):
+    """Helper: el provider de `src.ai.<modulo>` devuelve `texto` tal cual.
+
+    El patch debe apuntar al módulo que importa get_provider, no a
+    src.ai.providers: de lo contrario no surte efecto.
+    """
     mock_provider = MagicMock()
-    mock_provider.chat.return_value = _respuesta(datos)
+    mock_provider.nombre = "mock"
+    mock_provider.chat.return_value = {"message": {"content": texto}}
     monkeypatch.setattr(
-        "src.ai.interpreter.get_provider",
+        f"src.ai.{modulo}.get_provider",
         lambda provider_name=None: mock_provider
     )
+    return mock_provider
+
+
+def _mockear_provider(monkeypatch, datos, modulo="interpreter"):
+    """Helper: el provider devuelve `datos` serializados como JSON."""
+    return _mockear_texto(monkeypatch, json.dumps(datos), modulo)
 
 
 # ---------------- interpretar_instruccion ----------------
@@ -47,19 +58,12 @@ def test_interpretar_instruccion_vacia():
         interpreter.interpretar_instruccion("   ")
 
 
-@pytest.mark.skip(reason="Validación de errores ocurre en sistema real, no en mocks")
 def test_interpretar_instruccion_json_invalido(monkeypatch):
-    mock_provider = MagicMock()
-    mock_provider.chat.return_value = {"message": {"content": "no es json"}}
-    monkeypatch.setattr(
-        "src.ai.providers.get_provider",
-        lambda provider_name=None: mock_provider
-    )
+    _mockear_texto(monkeypatch, "no es json")
     with pytest.raises(ValueError, match="JSON invalido"):
         interpreter.interpretar_instruccion("casa")
 
 
-@pytest.mark.skip(reason="Validación de errores ocurre en sistema real, no en mocks")
 def test_interpretar_instruccion_esquema_invalido(monkeypatch):
     _mockear_provider(monkeypatch, {"ambientes": "no es lista"})
     with pytest.raises(ValueError, match="validar"):
@@ -72,25 +76,39 @@ def test_interpretar_edicion_valida(monkeypatch):
     datos = {"operaciones": [
         {"tipo": "modificar_area", "ambiente": "Sala", "area_objetivo": 16}
     ]}
-    mock_provider = MagicMock()
-    mock_provider.chat.return_value = _respuesta(datos)
-    monkeypatch.setattr(
-        "src.ai.providers.get_provider",
-        lambda provider_name=None: mock_provider
-    )
+    _mockear_provider(monkeypatch, datos, modulo="edit_interpreter")
     solicitud = edit_interpreter.interpretar_edicion("sala a 16 m2")
     assert solicitud.operaciones[0].area_objetivo == 16
 
 
-@pytest.mark.skip(reason="Validación de errores ocurre en sistema real, no en mocks")
+def test_interpretar_edicion_incluye_esquema_en_el_prompt(monkeypatch):
+    """Groq/proxy no tienen salida estructurada nativa: el esquema va en el prompt."""
+    datos = {"operaciones": [
+        {"tipo": "modificar_area", "ambiente": "Sala", "area_objetivo": 16}
+    ]}
+    mock_provider = _mockear_provider(monkeypatch, datos, modulo="edit_interpreter")
+    edit_interpreter.interpretar_edicion("sala a 16 m2")
+
+    kwargs = mock_provider.chat.call_args.kwargs
+    sistema = kwargs["messages"][0]["content"]
+    assert "operaciones" in sistema and "modificar_area" in sistema
+    assert "format" not in kwargs, "solo Ollama recibe format="
+
+
+def test_interpretar_edicion_con_ollama_usa_salida_estructurada(monkeypatch):
+    datos = {"operaciones": [
+        {"tipo": "modificar_area", "ambiente": "Sala", "area_objetivo": 16}
+    ]}
+    mock_provider = _mockear_provider(monkeypatch, datos, modulo="edit_interpreter")
+    mock_provider.nombre = "ollama"
+    edit_interpreter.interpretar_edicion("sala a 16 m2")
+
+    assert mock_provider.chat.call_args.kwargs["format"]["type"] == "object"
+
+
 def test_interpretar_edicion_rechaza_operacion_incompleta(monkeypatch):
     datos = {"operaciones": [{"tipo": "modificar_area", "ambiente": "Sala"}]}
-    mock_provider = MagicMock()
-    mock_provider.chat.return_value = _respuesta(datos)
-    monkeypatch.setattr(
-        "src.ai.providers.get_provider",
-        lambda provider_name=None: mock_provider
-    )
+    _mockear_provider(monkeypatch, datos, modulo="edit_interpreter")
     with pytest.raises(ValueError):
         edit_interpreter.interpretar_edicion("cambia la sala")
 
@@ -181,74 +199,111 @@ def test_consultar_modelo_devuelve_mensaje_de_error(monkeypatch):
     assert "Error al comunicarse" in ollama_client.consultar_modelo("hola")
 
 
-# ---------------- diagnóstico de reintentos en interpretar_instruccion ----------------
+# ---------------- reintentos de OllamaProvider ----------------
 
-def test_interpretar_instruccion_anota_reintentos_en_observaciones(monkeypatch):
-    """Reintentos manejados internamente por provider."""
-    pytest.skip("Reintentos se manejan internamente en cada provider")
-    datos_ok = {
-        "tipo_proyecto": "vivienda",
-        "ancho_terreno_m": 10.0,
-        "largo_terreno_m": 20.0,
-        "ambientes": [{"nombre": "sala", "cantidad": 1}],
-    }
+def _ollama_provider(monkeypatch, cliente):
+    from src.ai.providers.ollama_provider import OllamaProvider
 
-    def _chat_dos_intentos(**kw):
-        # Simula que internamente hubo un reintento: llena historial con 2 entradas.
-        hist = kw.get("historial")
-        if hist is not None:
-            hist.append({"intento": 1, "tiempo_s": 5.0, "ok": False, "error": "timeout"})
-            hist.append({"intento": 2, "tiempo_s": 3.0, "ok": True, "error": None})
-        return _respuesta(datos_ok)
+    monkeypatch.setattr("src.ai.providers.ollama_provider.time.sleep", lambda s: None)
+    provider = OllamaProvider(host="http://localhost:11434", reintentos=2)
+    provider.ollama = MagicMock()
+    provider.ollama.Client.return_value = cliente
+    provider.ollama.ResponseError = ollama.ResponseError
+    return provider
 
-    mock_provider = MagicMock()
-    mock_provider.chat.return_value = _respuesta(datos_ok)
-    monkeypatch.setattr(
-        "src.ai.providers.get_provider",
-        lambda provider_name=None: mock_provider
+
+def test_ollama_provider_reintenta_y_se_recupera(monkeypatch):
+    cliente = _ClienteFalso(fallos=2, error=ConnectionError("caído"))
+    provider = _ollama_provider(monkeypatch, cliente)
+
+    r = provider.chat(messages=[])
+
+    assert r["message"]["content"] == "ok"
+    assert cliente.llamadas == 3
+
+
+def test_ollama_provider_agota_reintentos(monkeypatch):
+    cliente = _ClienteFalso(fallos=99, error=ConnectionError("caído"))
+    provider = _ollama_provider(monkeypatch, cliente)
+
+    with pytest.raises(RuntimeError, match="No se pudo conectar a Ollama"):
+        provider.chat(messages=[])
+
+    assert cliente.llamadas == 3
+
+
+def test_ollama_provider_no_reintenta_errores_4xx(monkeypatch):
+    cliente = _ClienteFalso(
+        fallos=99, error=ollama.ResponseError("modelo no existe", 404)
     )
-    req = interpreter.interpretar_instruccion("casa 10x20 con sala")
+    provider = _ollama_provider(monkeypatch, cliente)
 
-    notas_llm = [o for o in req.observaciones if o.startswith("[LLM]")]
-    assert notas_llm, "Se esperaba nota de reintentos en observaciones"
-    assert "2 intentos" in notas_llm[0]
+    with pytest.raises(RuntimeError):
+        provider.chat(messages=[])
 
-
-def test_interpretar_instruccion_sin_reintentos_no_anota(monkeypatch):
-    datos = {
-        "tipo_proyecto": "vivienda",
-        "ancho_terreno_m": 10.0,
-        "largo_terreno_m": 20.0,
-        "ambientes": [{"nombre": "sala", "cantidad": 1}],
-    }
-    mock_provider = MagicMock()
-    mock_provider.chat.return_value = _respuesta(datos)
-    monkeypatch.setattr(
-        "src.ai.interpreter.get_provider",
-        lambda provider_name=None: mock_provider
-    )
-    req = interpreter.interpretar_instruccion("casa 10x20 con sala")
-
-    notas_llm = [o for o in req.observaciones if o.startswith("[LLM]")]
-    assert not notas_llm
+    assert cliente.llamadas == 1
 
 
-# ---- fallback regex terreno (estos tests requieren el sistema real de interpretation)
-# Los tests de fallback regex ahora se saltan ya que mockear el provider completo
-# no es compatible con el fallback regex que depende de los datos brutos del prompt.
-# Estos tests pueden ser reintroducidos cuando el fallback regex se independice del interpretador.
+def test_ollama_provider_reenvia_la_temperatura(monkeypatch):
+    recibido = {}
+
+    class _Cliente:
+        def chat(self, **kwargs):
+            recibido.update(kwargs)
+            return {"message": {"content": "ok"}}
+
+    provider = _ollama_provider(monkeypatch, _Cliente())
+    provider.chat(messages=[], temperature=0.1)
+
+    assert recibido["options"]["temperature"] == 0.1
+
+
+# ---------------- fallback regex del terreno ----------------
+
+DATOS_SIN_TERRENO = {
+    "tipo_proyecto": "vivienda",
+    "ambientes": [{"nombre": "sala", "cantidad": 1}],
+}
+
+
+@pytest.mark.parametrize("prompt, ancho, largo", [
+    ("vivienda en un terreno de 6 x 10 metros con sala", 6.0, 10.0),
+    ("casa de 11 x 20 m para una familia de 5 personas", 11.0, 20.0),
+    ("house on a 10 x 20 meter lot with a living room", 10.0, 20.0),
+])
+def test_fallback_regex_extrae_dimensiones_si_el_modelo_las_omite(
+    monkeypatch, prompt, ancho, largo
+):
+    _mockear_provider(monkeypatch, DATOS_SIN_TERRENO)
+
+    req = interpreter.interpretar_instruccion(prompt)
+
+    assert (req.ancho_terreno_m, req.largo_terreno_m) == (ancho, largo)
+
+
+def test_fallback_regex_extrae_area_del_terreno(monkeypatch):
+    _mockear_provider(monkeypatch, DATOS_SIN_TERRENO)
+
+    req = interpreter.interpretar_instruccion("casa en un terreno de 200 m2 con sala")
+
+    assert req.ancho_terreno_m and req.largo_terreno_m
+    assert req.ancho_terreno_m * req.largo_terreno_m == pytest.approx(200, rel=0.05)
+
+
+def test_fallback_regex_no_pisa_lo_que_extrajo_el_modelo(monkeypatch):
+    datos = {**DATOS_SIN_TERRENO, "ancho_terreno_m": 10.0, "largo_terreno_m": 20.0}
+    _mockear_provider(monkeypatch, datos)
+
+    req = interpreter.interpretar_instruccion("casa con sala, patio de 6 x 10 metros")
+
+    assert (req.ancho_terreno_m, req.largo_terreno_m) == (10.0, 20.0)
 
 
 def test_interpretar_edicion_fuera_de_catalogo_da_mensaje_amigable(monkeypatch):
     datos = {"operaciones": [
         {"tipo": "modificar_area", "ambiente": "piscina", "area_objetivo": 0}
     ]}
-    mock_provider = MagicMock()
-    mock_provider.chat.return_value = _respuesta(datos)
-    monkeypatch.setattr(
-        "src.ai.providers.get_provider",
-        lambda provider_name=None: mock_provider
-    )
+    _mockear_provider(monkeypatch, datos, modulo="edit_interpreter")
     with pytest.raises(ValueError, match="ambiente soportado") as info:
         edit_interpreter.interpretar_edicion("agrega una piscina")
     assert "validar" in str(info.value)

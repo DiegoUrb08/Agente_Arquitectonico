@@ -48,12 +48,14 @@ class OllamaProvider(LLMProvider):
         """Envía request a Ollama con reintentos."""
         cliente = self.ollama.Client(host=self.host, timeout=self.timeout)
         ultimo_error = None
+        opciones = {"temperature": temperature, **kwargs.pop("options", {})}
 
         for intento in range(self.reintentos + 1):
             try:
                 response = cliente.chat(
                     model=self._modelo,
                     messages=messages,
+                    options=opciones,
                     **kwargs,
                 )
                 return response

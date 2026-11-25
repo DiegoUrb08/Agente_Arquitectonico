@@ -28,7 +28,7 @@ streamlit run app.py
 | **Groq** *(recomendado)* | 🟢 Gratis, sin tarjeta | 2 min · solo email | ⚡ 100+ tokens/s |
 | **Ollama** *(local)* | 🟢 Gratis | 10 min · descarga ~5 GB | ⚠️ Según tu PC |
 | **Proxy** *(demo)* | 🟢 Gratis* | Pide URL al operador | ⚡ Igual que Groq |
-| **Claude / OpenAI** | 🟡 De pago | Clave API | ⚡ Rápido |
+| **Claude / OpenAI** | — | *Aún no implementado* | — |
 
 \* Sujeto al límite de peticiones que fije el operador del servidor demo.
 
@@ -141,5 +141,5 @@ src/
 server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
-tests/                  # 168 tests pytest
+tests/                  # 186 tests pytest
 ```

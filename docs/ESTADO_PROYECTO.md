@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **168 pruebas pytest pasan, 4 skipped** (~45 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
+- **186 pruebas pytest pasan, 0 skipped** (~25 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -175,7 +175,7 @@
     - `app.py` valida config antes de iniciar UI
 
 21. **Script de setup interactivo** (`setup_llm.py`):
-    - Menu: 1=Groq, 2=Ollama, 3=Claude, 4=Salir
+    - Menu: 1=Groq, 2=Ollama, 3=Proxy, 4=Salir (Claude se retiró del menú: `get_provider` no lo soporta)
     - Instrucciones paso a paso para cada proveedor
     - Genera `.env` automáticamente con configuración
 
@@ -223,16 +223,25 @@
 
 30. **server/README.md** actualizado: documenta el lanzador `arrancar.py` con túnel Cloudflare como opción principal (sin cuenta de hosting), sus limitaciones (URL efímera, PC encendido), y mantiene la opción de Render como alternativa siempre activa.
 
+## Preparación para publicar (2026-11-24)
+
+31. **`edit_interpreter` migrado a los proveedores** (`src/ai/edit_interpreter.py`): seguía llamando a Ollama directamente (`chat_con_reintentos`), así que la sección "Editar un plano" no funcionaba con Groq ni con el proxy; la Fase 1 solo había migrado `interpreter.py`. Ahora usa `get_provider()`. Como Groq y el proxy no tienen salida estructurada nativa, el esquema de `EditRequest` se incluye en el prompt de sistema; `format=` se envía solo a Ollama. Verificado con una llamada real a Groq (modificar área y mover ambiente).
+32. **`OllamaProvider` ignoraba `temperature`**: el parámetro se aceptaba pero no se enviaba a Ollama. Ahora se reenvía en `options` (el intérprete usa 0,1 y la edición 0).
+33. **Tests rehabilitados** (`tests/test_ai.py`): los 3 tests de validación de errores y el de reintentos estaban en `skip` por el mismo patch erróneo de la Fase 3 (apuntaban a `src.ai.providers.get_provider`); además `test_interpretar_edicion_valida` llamaba al Ollama real (20 s y fallaría en CI). Corregido el target del patch. Se eliminaron los 2 tests de "[LLM] N intentos" (esa nota ya no existe), se repusieron los de fallback regex del terreno (4 casos, verificados: fallan sin el fallback) y se añadieron tests de reintentos y temperatura de `OllamaProvider`, que no tenía ninguno.
+34. **`setup_llm.py`**: mostraba un modelo retirado; sobrescribía el `.env` completo (habría borrado `GROQ_API_KEY` y `PROXY_ACCESS_TOKEN`) y escribía en el directorio actual. Ahora actualiza solo las claves indicadas, en el `.env` de la raíz. Se retiró la opción Claude, que `get_provider` no soporta. Nuevo `tests/test_setup_llm.py` (5 tests, sobre un `.env` temporal).
+35. **Documentación alineada**: README y `.env.example` indican que Claude/OpenAI aún no están implementados.
+
+**Resultado: 186 tests pasan, 0 skipped.**
+
 ## Acciones pendientes (priorizadas) — revisión 2026-11-24
 
 ### Prioridad alta: antes de publicar en GitHub
 - **Revocar la clave de Groq pegada en el chat** (`gsk_GoWQ…`) en console.groq.com/keys. Sigue sin confirmarse.
-- **Corregir `setup_llm.py`**: todavía imprime "Modelo: Mixtral 8x7B" (retirado) y su menú (1 Groq, 2 Ollama, 3 Claude, 4 Salir) no coincide con la opción de proxy descrita en el punto 23.
 - **Publicar el remoto y verificar el primer run de CI** en GitHub (`.github/workflows/tests.yml`).
-- **Decidir sobre los cambios sin commitear** de esta revisión de documentación, si se quieren versionar.
+- **Errores de los proveedores en la UI**: Groq, Ollama y el proxy lanzan `RuntimeError`, que la UI no trata como error esperable (`ERRORES_CONTROLADOS`). Al llegar al límite del proxy (429) el usuario vería "Error inesperado" con traza en vez del mensaje claro. Solución prevista: una excepción propia `LLMProviderError(RuntimeError)` en `providers/base.py` y añadirla a `ERRORES_CONTROLADOS`.
+- **Claude/OpenAI**: `config.py` los valida pero `get_provider` no los implementa. Decidir entre implementar `ClaudeProvider`/`OpenAIProvider` o quitar sus rastros de `config.py`.
 
 ### Prioridad media: calidad y robustez
-- **Rehabilitar los 4 tests `skip` de `tests/test_ai.py`** (errores de validación, reintentos y fallback regex). Hoy no se verifican; el fallback regex del terreno no tiene test activo.
 - **Proxy con URL fija**: named tunnel de Cloudflare con dominio propio, o despliegue en Render. Con el túnel rápido la URL cambia en cada reinicio.
 - **Rate limit en memoria**: se reinicia con el proceso y es válido solo para un proceso. Suficiente para la demo; no escala a varios workers.
 - **Re-ejecutar el benchmark con Groq** (`scripts/benchmark_llm.py`) para comparar calidad y tiempos frente a Qwen3:8b local. Es una sugerencia, no un hallazgo previo.
