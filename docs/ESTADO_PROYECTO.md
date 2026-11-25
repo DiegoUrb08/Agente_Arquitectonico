@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **242 pruebas pytest pasan, 0 skipped** (~30 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
+- **264 pruebas pytest pasan, 0 skipped** (~40 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -256,7 +256,20 @@ Plan acordado: estilo "blueprint" oscuro, espacio de trabajo único (fase 3) y f
 
 **Resultado: 242 tests pasan, 0 skipped.** Una ejecución de la suite se colgó una vez (más de 5 min) y no se repitió en las siguientes (~30 s); causa sin identificar.
 
-Siguientes pasos del rediseño: fase 3 (espacio de trabajo único: generar y refinar sobre el mismo plano, con deshacer) y fase 4 (ejemplos clicables, resaltado de cambios, SVG descargable, opción de ajustar la vista a la vivienda en terrenos grandes).
+### Fase 3: espacio de trabajo único (2026-11-25)
+
+46. **Flujo único** (`interfaz.py`): la pantalla de inicio ("Nuevo proyecto") permite describir el proyecto o abrir un `.dxf`; una vez creado, el espacio de trabajo muestra a la izquierda la conversación (historial, entrada de chat, **Deshacer**, **Nuevo proyecto**, versión actual) y a la derecha el plano con tarjetas, pestañas y descargas. Cada cambio pedido por texto se aplica **sobre el plano actual** y crea una versión nueva; no hace falta volver a subir el archivo. Sustituye a las dos secciones separadas "Generar" y "Editar".
+47. **Lógica sin Streamlit** (`src/ui/proyecto.py`): versiones (cada una con su DXF, CSV y resultado), mensajes, `aplicar_edicion`, `deshacer`, `abrir_proyecto`, `resumen_modificaciones`. Los DXF se manejan en memoria y en carpetas temporales (antes se escribía siempre `output/plano_*.dxf`, compartido entre sesiones).
+48. **Abrir un DXF existente** (`pipeline.abrir_plano`, `cargar_y_editar(ruta, None)`): reconstruye el plano completo sin modificarlo. Un archivo que no es DXF, está vacío o truncado da un `ValueError` claro en lugar de un "Error inesperado".
+49. **Tarjetas** en 2 filas de 3 (con 5 columnas se truncaban en la columna derecha) y **leyenda** como fila de etiquetas sobre el plano, que así ocupa todo el ancho.
+50. **Fallo latente corregido** (`app.py`): el `print` del mensaje de bienvenida (con emojis) lanzaba `UnicodeEncodeError` cuando la salida no es UTF-8 (p. ej. redirigida a un archivo). Al ser un `ValueError`, la pantalla de bienvenida lo confundía con un error de configuración (y antes rompía la app). Ahora el aviso es opcional y va fuera de la validación. Test de regresión incluido; se descubrió con las capturas reales.
+51. Tests: `test_proyecto.py` (14), `test_resultados_ui.py` (11, flujo completo con `AppTest`) y `tests/plano_fijo.py` (plano determinista: el optimizador no lo es y el editor rechaza cambios según la distribución).
+
+**Límites conocidos del chat de edición:** solo hay dos operaciones (cambiar el área de un ambiente y moverlo respecto a otro); "agrega una piscina" o "añade un baño" se rechazan con un mensaje claro. No admite planos de varias plantas (el chat se desactiva y lo explica). El editor puede dejar ambientes sin contacto (se avisa en el chat).
+
+**Resultado: 264 tests pasan, 0 skipped.**
+
+Siguiente (fase 4): ejemplos clicables en el inicio, resaltar en el plano lo que cambió, descargar el SVG, y una opción de ajustar la vista a la vivienda en terrenos grandes. Idea más ambiciosa: permitir peticiones que cambian el programa ("agrega un estudio") regenerando el plano a partir de la descripción ampliada.
 
 ## Acciones pendientes (priorizadas) — revisión 2026-11-24
 

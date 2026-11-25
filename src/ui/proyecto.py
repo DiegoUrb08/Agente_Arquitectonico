@@ -1,0 +1,213 @@
+"""Estado de un proyecto: versiones del plano y conversación (sin Streamlit)."""
+
+import tempfile
+from pathlib import Path
+
+import ezdxf
+
+from src.services.pipeline import (
+    ResultadoPlanoMultipisos,
+    abrir_plano,
+    editar_plano,
+    generar_csv_areas,
+    generar_plano,
+)
+
+RELACIONES = {
+    "junto_a": "junto a",
+    "cerca_de": "cerca de",
+    "lejos_de": "lejos de",
+    "izquierda_de": "a la izquierda de",
+    "derecha_de": "a la derecha de",
+    "arriba_de": "arriba de",
+    "abajo_de": "abajo de",
+}
+
+AYUDA = (
+    "Puedo **cambiar el área** de un ambiente (*«reduce el comedor a 8 m²»*) "
+    "o **moverlo** respecto a otro (*«mueve el dormitorio 2 a la derecha de "
+    "la cocina»*)."
+)
+
+AVISO_VARIAS_PLANTAS = (
+    "La edición por texto todavía no admite planos de varias plantas."
+)
+
+
+def pisos_de(resultado) -> list:
+    if isinstance(resultado, ResultadoPlanoMultipisos):
+        return list(resultado.pisos)
+    return [resultado]
+
+
+def dimensiones_terreno(piso) -> tuple[float, float]:
+    minx, miny, maxx, maxy = piso.geometrias["terreno"].bounds
+    return maxx - minx, maxy - miny
+
+
+def puede_editar(resultado) -> bool:
+    return not isinstance(resultado, ResultadoPlanoMultipisos)
+
+
+def _legible(identificador: str) -> str:
+    return str(identificador).replace("_", " ").capitalize()
+
+
+def resumen_modificaciones(modificaciones: list) -> list[str]:
+    """Una línea legible por cada modificación aplicada por el editor."""
+    lineas = []
+    for m in modificaciones:
+        nombre = _legible(m.get("id") or m["ambiente"])
+        if "area_nueva" in m:
+            lineas.append(
+                f"{nombre}: {m['area_anterior']:.1f} → {m['area_nueva']:.1f} m²"
+            )
+        else:
+            relacion = RELACIONES.get(m["relacion"], m["relacion"])
+            lineas.append(f"{nombre} movido {relacion} {m['referencia']}")
+    return lineas
+
+
+def describir_plano(resultado) -> str:
+    pisos = pisos_de(resultado)
+    ambientes = sum(len(p.distribucion) for p in pisos)
+    superficie = sum(
+        a.get("area_m2", a["ancho"] * a["largo"])
+        for p in pisos
+        for a in p.distribucion
+    )
+    ancho, largo = dimensiones_terreno(pisos[0])
+    texto = (
+        f"{ambientes} ambientes, {superficie:.1f} m² construidos en un "
+        f"terreno de {ancho:g} × {largo:g} m"
+    )
+    if len(pisos) > 1:
+        texto += f" ({len(pisos)} plantas)"
+    return texto
+
+
+def _mensaje(rol: str, texto: str, detalle: str | None = None) -> dict:
+    return {"rol": rol, "texto": texto, "detalle": detalle}
+
+
+def _version(resultado, dxf: bytes, etiqueta: str) -> dict:
+    return {
+        "resultado": resultado,
+        "dxf": dxf,
+        "csv": generar_csv_areas(resultado),
+        "etiqueta": etiqueta,
+    }
+
+
+def _invitacion(resultado) -> str:
+    return AYUDA if puede_editar(resultado) else AVISO_VARIAS_PLANTAS
+
+
+def proyecto_inicial(requerimientos, texto: str, resultado, dxf: bytes) -> dict:
+    """Proyecto con un plano ya generado como versión 1."""
+
+    return {
+        "requerimientos": requerimientos,
+        "versiones": [_version(resultado, dxf, "Plano inicial")],
+        "mensajes": [
+            _mensaje("usuario", texto),
+            _mensaje(
+                "agente",
+                f"Plano generado: {describir_plano(resultado)}.\n\n"
+                + _invitacion(resultado),
+            ),
+        ],
+    }
+
+
+def crear_proyecto(requerimientos, texto: str, progreso=None) -> dict:
+    """Genera el plano inicial a partir de requerimientos ya interpretados."""
+
+    with tempfile.TemporaryDirectory() as carpeta:
+        ruta = Path(carpeta) / "plano.dxf"
+        resultado = generar_plano(requerimientos, ruta, progreso=progreso)
+        dxf = ruta.read_bytes()
+
+    return proyecto_inicial(requerimientos, texto, resultado, dxf)
+
+
+def abrir_proyecto(dxf: bytes, nombre_archivo: str, progreso=None) -> dict:
+    """Abre un DXF existente como versión inicial de un proyecto."""
+
+    with tempfile.TemporaryDirectory() as carpeta:
+        entrada = Path(carpeta) / "entrada.dxf"
+        salida = Path(carpeta) / "salida.dxf"
+        entrada.write_bytes(dxf)
+        try:
+            resultado = abrir_plano(entrada, salida, progreso=progreso)
+        except (OSError, ezdxf.DXFError) as error:
+            raise ValueError(
+                f"«{nombre_archivo}» no es un archivo DXF válido."
+            ) from error
+        regenerado = salida.read_bytes()
+
+    return {
+        "requerimientos": None,
+        "versiones": [_version(resultado, regenerado, "Plano abierto")],
+        "mensajes": [
+            _mensaje(
+                "agente",
+                f"Abrí «{nombre_archivo}»: {describir_plano(resultado)}.\n\n"
+                + _invitacion(resultado),
+            ),
+        ],
+    }
+
+
+def version_actual(proyecto: dict) -> dict:
+    return proyecto["versiones"][-1]
+
+
+def aplicar_edicion(proyecto: dict, texto: str, solicitud) -> None:
+    """Aplica la edición al plano actual y añade una versión nueva."""
+
+    actual = version_actual(proyecto)
+
+    with tempfile.TemporaryDirectory() as carpeta:
+        entrada = Path(carpeta) / "entrada.dxf"
+        salida = Path(carpeta) / "salida.dxf"
+        entrada.write_bytes(actual["dxf"])
+        resultado = editar_plano(str(entrada), str(salida), solicitud)
+        dxf = salida.read_bytes()
+
+    lineas = resumen_modificaciones(resultado["modificaciones"])
+    numero = len(proyecto["versiones"]) + 1
+
+    proyecto["versiones"].append(
+        _version(resultado["plano"], dxf, "; ".join(lineas))
+    )
+
+    respuesta = f"Listo, versión {numero}:\n" + "\n".join(f"- {l}" for l in lineas)
+    for aviso in resultado["observaciones"]:
+        respuesta += f"\n\n⚠️ {aviso}"
+    proyecto["mensajes"].append(_mensaje("agente", respuesta))
+
+
+def registrar_error(proyecto: dict, texto: str, detalle: str | None = None) -> None:
+    proyecto["mensajes"].append(_mensaje("error", texto, detalle))
+
+
+def registrar_usuario(proyecto: dict, texto: str) -> None:
+    proyecto["mensajes"].append(_mensaje("usuario", texto))
+
+
+def deshacer(proyecto: dict) -> bool:
+    """Vuelve a la versión anterior; False si ya no hay nada que deshacer."""
+
+    if len(proyecto["versiones"]) < 2:
+        return False
+
+    quitada = proyecto["versiones"].pop()
+    proyecto["mensajes"].append(
+        _mensaje(
+            "agente",
+            f"Deshice el último cambio ({quitada['etiqueta']}). "
+            f"Vuelves a la versión {len(proyecto['versiones'])}.",
+        )
+    )
+    return True

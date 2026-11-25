@@ -4,7 +4,7 @@ from html import escape
 
 import streamlit as st
 
-from src.services.pipeline import ResultadoPlanoMultipisos
+from src.ui.proyecto import dimensiones_terreno, pisos_de
 from src.ui.plano_svg import (
     color_de_ambiente,
     etiquetas_ambientes,
@@ -21,23 +21,12 @@ CAPAS = {
 }
 
 
-def pisos_de(resultado) -> list:
-    if isinstance(resultado, ResultadoPlanoMultipisos):
-        return list(resultado.pisos)
-    return [resultado]
-
-
 def etiquetas_de_pisos(cantidad: int) -> list[str]:
     return (["Planta Baja"] + [f"Planta Alta {i}" for i in range(1, cantidad)])[:cantidad]
 
 
-def _dimensiones_terreno(piso) -> tuple[float, float]:
-    minx, miny, maxx, maxy = piso.geometrias["terreno"].bounds
-    return maxx - minx, maxy - miny
-
-
 def tarjetas_resumen(piso) -> None:
-    ancho, largo = _dimensiones_terreno(piso)
+    ancho, largo = dimensiones_terreno(piso)
     superficie = sum(
         a.get("area_m2", a["ancho"] * a["largo"]) for a in piso.distribucion
     )
@@ -45,14 +34,15 @@ def tarjetas_resumen(piso) -> None:
     ventanas = len((piso.ventanas or {}).get("ventanas", []))
     conectado = piso.validacion["distribucion_conectada"]
 
-    columnas = st.columns(5)
-    columnas[0].metric("Terreno", f"{ancho:g} × {largo:g} m", border=True)
-    columnas[1].metric("Ambientes", len(piso.distribucion), border=True)
-    columnas[2].metric("Superficie construida", f"{superficie:.1f} m²", border=True)
-    columnas[3].metric("Puertas · ventanas", f"{puertas} · {ventanas}", border=True)
-    columnas[4].metric(
-        "Ambientes conectados", "Sí" if conectado else "No", border=True
-    )
+    arriba = st.columns(3)
+    arriba[0].metric("Terreno", f"{ancho:g} × {largo:g} m", border=True)
+    arriba[1].metric("Ambientes", len(piso.distribucion), border=True)
+    arriba[2].metric("Superficie construida", f"{superficie:.1f} m²", border=True)
+
+    abajo = st.columns(3)
+    abajo[0].metric("Puertas", puertas, border=True)
+    abajo[1].metric("Ventanas", ventanas, border=True)
+    abajo[2].metric("Ambientes conectados", "Sí" if conectado else "No", border=True)
 
 
 def _leyenda_html(piso) -> str:
@@ -61,16 +51,20 @@ def _leyenda_html(piso) -> str:
         area = a.get("area_m2", a["ancho"] * a["largo"])
         totales[a["nombre"]] = totales.get(a["nombre"], 0.0) + area
 
-    filas = "".join(
-        f'<div style="display:flex;align-items:center;gap:8px;margin:4px 0">'
-        f'<span style="width:12px;height:12px;border-radius:3px;'
+    etiquetas = "".join(
+        f'<span style="display:inline-flex;align-items:center;gap:6px;'
+        f'margin:0 16px 6px 0;white-space:nowrap">'
+        f'<span style="width:10px;height:10px;border-radius:3px;'
         f'background:{color_de_ambiente(nombre)}"></span>'
-        f'<span style="flex:1">{escape(nombre.capitalize())}</span>'
+        f"{escape(nombre.capitalize())} "
         f'<span style="color:#8FB3D1;font-variant-numeric:tabular-nums">'
-        f"{area:.1f} m²</span></div>"
+        f"{area:.1f} m²</span></span>"
         for nombre, area in totales.items()
     )
-    return f'<div style="font-size:0.9rem">{filas}</div>'
+    return (
+        f'<div style="display:flex;flex-wrap:wrap;font-size:0.85rem">'
+        f"{etiquetas}</div>"
+    )
 
 
 def _mostrar_svg(piso, capas, clave: str) -> None:
@@ -99,15 +93,9 @@ def visor_plano(piso, clave: str) -> None:
     )
     capas = frozenset(CAPAS[e] for e in (elegidas or []))
 
-    izquierda, derecha = st.columns([3, 2])
-
-    with izquierda:
-        _mostrar_svg(piso, capas, clave)
-
-    with derecha:
-        st.markdown("**Leyenda**")
-        st.html(_leyenda_html(piso))
-        st.caption("Pasa el cursor sobre una habitación para ver sus medidas.")
+    st.html(_leyenda_html(piso))
+    _mostrar_svg(piso, capas, clave)
+    st.caption("Pasa el cursor sobre una habitación para ver sus medidas.")
 
 
 def tabla_ambientes(piso) -> None:

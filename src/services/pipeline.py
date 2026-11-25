@@ -268,6 +268,34 @@ def generar_plano_multipisos(
     )
 
 
+def abrir_plano(
+    ruta_entrada,
+    ruta_salida,
+    progreso: Callable[[str], None] | None = None,
+) -> ResultadoPlano:
+    """
+    Carga un DXF generado por este proyecto y reconstruye su plano completo
+    (muros, puertas, ventanas, mobiliario) sin modificar la distribución.
+    """
+
+    from src.cad.dxf_editor import (
+        cargar_y_editar,
+        distribucion_desde_ambientes,
+    )
+
+    _, ambientes, terreno, _ = cargar_y_editar(ruta_entrada, None)
+
+    xmin, ymin, xmax, ymax = terreno.bounds
+
+    return construir_plano(
+        distribucion_desde_ambientes(ambientes),
+        round(xmax - xmin, 3),
+        round(ymax - ymin, 3),
+        ruta_salida,
+        progreso,
+    )
+
+
 def editar_plano(
     ruta_entrada,
     ruta_salida,

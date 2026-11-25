@@ -602,6 +602,7 @@ def cargar_y_editar(ruta_entrada, solicitud):
     """
     Abre el DXF y aplica las operaciones en memoria.
 
+    Con `solicitud=None` solo lo abre, sin modificar nada.
     Devuelve (documento, ambientes, terreno, resultados) sin guardar.
     """
 
@@ -635,7 +636,9 @@ def cargar_y_editar(ruta_entrada, solicitud):
 
     resultados = []
 
-    for operacion in solicitud.operaciones:
+    operaciones = solicitud.operaciones if solicitud is not None else []
+
+    for operacion in operaciones:
 
         if operacion.tipo == "modificar_area":
 

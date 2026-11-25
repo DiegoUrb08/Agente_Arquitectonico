@@ -260,7 +260,4 @@ def test_la_interfaz_arranca_sin_excepciones(monkeypatch):
 
     assert not at.exception
     assert at.title[0].value == "Agente Arquitectónico"
-    assert [h.value for h in at.header] == [
-        "1. Generar un nuevo plano",
-        "2. Editar un plano existente",
-    ]
+    assert [h.value for h in at.header] == ["Nuevo proyecto"]

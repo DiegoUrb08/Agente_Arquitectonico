@@ -3,7 +3,6 @@
 import logging
 import os
 import traceback
-from pathlib import Path
 
 import streamlit as st
 
@@ -11,15 +10,11 @@ from src.ai.edit_interpreter import interpretar_edicion
 from src.ai.interpreter import interpretar_instruccion
 from src.ai.ollama_client import OllamaError
 from src.ai.providers import LLMProviderError
-from src.cad.dxf_reader import analizar_dxf
-from src.services.pipeline import editar_plano, generar_csv_areas, generar_plano
+from src.ui import proyecto as pry
 from src.ui.resultados import mostrar_resultado
 from src.ui.tema import aplicar_tema
 
 logger = logging.getLogger(__name__)
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-CARPETA_SALIDA = PROJECT_ROOT / "output"
 
 # Errores esperables: se muestran como mensaje claro, sin traza.
 ERRORES_CONTROLADOS = (
@@ -32,34 +27,38 @@ ERRORES_CONTROLADOS = (
 
 
 # ============================================================
-# AUXILIARES DE PRESENTACIÓN
+# ERRORES
 # ============================================================
+
+def describir_error(error: Exception) -> tuple[str, str | None]:
+    """(mensaje, traza); la traza solo existe en errores inesperados."""
+
+    if isinstance(error, ERRORES_CONTROLADOS):
+        return str(error), None
+
+    logger.exception("Error inesperado", exc_info=error)
+    return (
+        f"Error inesperado: {error}",
+        "".join(traceback.format_exception(error)),
+    )
+
 
 def mostrar_error(error: Exception):
     """Mensaje claro para errores esperables; traza para los inesperados."""
 
-    if isinstance(error, ERRORES_CONTROLADOS):
-        st.error(str(error))
-        return
+    texto, detalle = describir_error(error)
+    st.error(texto)
 
-    logger.exception("Error inesperado", exc_info=error)
-    st.error(f"Error inesperado: {error}")
-
-    with st.expander("Detalle técnico del error"):
-        st.code(
-            "".join(traceback.format_exception(error)),
-            language="python",
-        )
+    if detalle:
+        with st.expander("Detalle técnico del error"):
+            st.code(detalle, language="python")
 
 
 # ============================================================
-# SECCIONES
+# INICIO: describir un proyecto o abrir un plano existente
 # ============================================================
 
 def _generar(instruccion: str) -> None:
-    """Interpreta, genera y guarda el resultado en session_state."""
-
-    st.session_state.pop("generado", None)
 
     if not instruccion.strip():
         st.warning("Primero debes escribir una descripción del proyecto.")
@@ -78,59 +77,39 @@ def _generar(instruccion: str) -> None:
                 st.write(f"- {dato}")
             return
 
-        CARPETA_SALIDA.mkdir(parents=True, exist_ok=True)
-
         with st.status("Generando el plano...", expanded=False) as estado:
-            resultado = generar_plano(
+            proyecto = pry.crear_proyecto(
                 requerimientos,
-                CARPETA_SALIDA / "plano_generado.dxf",
+                instruccion,
                 progreso=lambda m: estado.update(label=m),
             )
             estado.update(label="Plano generado", state="complete")
 
-        st.session_state["generado"] = {
-            "requerimientos": requerimientos,
-            "resultado": resultado,
-            "dxf": resultado.ruta_dxf.read_bytes(),
-            "csv": generar_csv_areas(resultado),
-        }
-        st.toast("Plano generado", icon="✅")
-
     except Exception as error:  # límite de la UI: nunca romper la página
         mostrar_error(error)
+        return
+
+    st.session_state["proyecto"] = proyecto
+    st.rerun()
 
 
-def _mostrar_generado(generado: dict) -> None:
+def _abrir(archivo) -> None:
 
-    st.success("El plano arquitectónico se generó correctamente.")
+    try:
+        with st.spinner("Abriendo el plano..."):
+            proyecto = pry.abrir_proyecto(archivo.getvalue(), archivo.name)
 
-    descarga_dxf, descarga_csv, _ = st.columns([1, 1, 2])
-    descarga_dxf.download_button(
-        "Descargar plano DXF",
-        data=generado["dxf"],
-        file_name="plano_generado.dxf",
-        mime="application/dxf",
-        type="primary",
-        on_click="ignore",
-        width="stretch",
-    )
-    descarga_csv.download_button(
-        "Cuadro de áreas (CSV)",
-        data=generado["csv"],
-        file_name="cuadro_areas.csv",
-        mime="text/csv",
-        on_click="ignore",
-        width="stretch",
-    )
+    except Exception as error:  # límite de la UI
+        mostrar_error(error)
+        return
 
-    mostrar_resultado(
-        generado["resultado"], generado["requerimientos"], clave="gen"
-    )
+    st.session_state["proyecto"] = proyecto
+    st.rerun()
 
 
-def seccion_generar():
+def inicio() -> None:
 
-    st.header("1. Generar un nuevo plano")
+    st.header("Nuevo proyecto")
 
     instruccion = st.text_area(
         "Describe el proyecto arquitectónico:",
@@ -144,108 +123,110 @@ def seccion_generar():
     if st.button("Generar plano", type="primary"):
         _generar(instruccion)
 
-    generado = st.session_state.get("generado")
-    if generado:
-        _mostrar_generado(generado)
+    with st.expander("¿Ya tienes un plano? Ábrelo para editarlo"):
+        archivo = st.file_uploader(
+            "Subir plano arquitectónico (.dxf)", type=["dxf"], key="archivo_dxf"
+        )
+        if archivo is not None and st.button("Abrir plano"):
+            _abrir(archivo)
 
 
-def _aplicar_edicion(instruccion: str, ruta_entrada: Path, id_archivo: str) -> None:
-    """Interpreta y aplica la edición; guarda el resultado en session_state."""
+# ============================================================
+# ESPACIO DE TRABAJO: conversación + plano
+# ============================================================
 
-    st.session_state.pop("editado", None)
+def _mostrar_mensajes(mensajes: list) -> None:
 
-    if not instruccion.strip():
-        st.warning("Primero debes describir las modificaciones.")
-        return
+    for m in mensajes:
+        with st.chat_message("user" if m["rol"] == "usuario" else "assistant"):
+            if m["rol"] == "error":
+                st.error(m["texto"])
+                if m["detalle"]:
+                    with st.expander("Detalle técnico"):
+                        st.code(m["detalle"], language="python")
+            else:
+                st.markdown(m["texto"])
 
-    with st.spinner("Interpretando las modificaciones..."):
-        solicitud = interpretar_edicion(instruccion)
 
-    ruta_modificada = CARPETA_SALIDA / "plano_modificado.dxf"
+def _refinar(proyecto: dict, texto: str, caja) -> None:
+    """Interpreta y aplica un cambio; el resultado queda en el proyecto."""
 
-    with st.spinner("Aplicando modificaciones y regenerando el plano..."):
-        resultado = editar_plano(
-            str(ruta_entrada), str(ruta_modificada), solicitud
+    pry.registrar_usuario(proyecto, texto)
+
+    with caja:
+        _mostrar_mensajes(proyecto["mensajes"])
+        with st.spinner("Interpretando y aplicando el cambio..."):
+            try:
+                solicitud = interpretar_edicion(texto)
+                pry.aplicar_edicion(proyecto, texto, solicitud)
+            except Exception as error:  # límite de la UI
+                mensaje, detalle = describir_error(error)
+                pry.registrar_error(proyecto, mensaje, detalle)
+
+
+def espacio_de_trabajo(proyecto: dict) -> None:
+
+    actual = pry.version_actual(proyecto)
+    versiones = len(proyecto["versiones"])
+    editable = pry.puede_editar(actual["resultado"])
+
+    izquierda, derecha = st.columns([2, 3], gap="large")
+
+    with izquierda:
+        st.subheader("Conversación")
+        caja = st.container(height=460, border=True)
+        entrada = st.chat_input(
+            "Pide un cambio al plano…",
+            disabled=not editable,
+            key="entrada_chat",
+        )
+        c_deshacer, c_nuevo = st.columns(2)
+        deshacer = c_deshacer.button(
+            "↶ Deshacer",
+            disabled=versiones < 2,
+            width="stretch",
+        )
+        nuevo = c_nuevo.button("Nuevo proyecto", width="stretch")
+        st.caption(f"Versión {versiones}: {actual['etiqueta']}")
+
+    if nuevo:
+        st.session_state.pop("proyecto", None)
+        st.rerun()
+
+    if deshacer:
+        pry.deshacer(proyecto)
+        st.rerun()
+
+    if entrada:
+        _refinar(proyecto, entrada, caja)
+        st.rerun()
+
+    with caja:
+        _mostrar_mensajes(proyecto["mensajes"])
+
+    with derecha:
+        descarga_dxf, descarga_csv, _ = st.columns([1, 1, 1])
+        descarga_dxf.download_button(
+            "Descargar DXF",
+            data=actual["dxf"],
+            file_name="plano.dxf",
+            mime="application/dxf",
+            type="primary",
+            on_click="ignore",
+            width="stretch",
+        )
+        descarga_csv.download_button(
+            "Cuadro de áreas (CSV)",
+            data=actual["csv"],
+            file_name="cuadro_areas.csv",
+            mime="text/csv",
+            on_click="ignore",
+            width="stretch",
         )
 
-    st.session_state["editado"] = {
-        "archivo": id_archivo,
-        "modificaciones": resultado["modificaciones"],
-        "observaciones": resultado["observaciones"],
-        "plano": resultado["plano"],
-        "dxf": ruta_modificada.read_bytes(),
-    }
-    st.toast("Plano modificado", icon="✅")
-
-
-def _mostrar_editado(editado: dict) -> None:
-
-    st.success("El plano fue modificado correctamente.")
-
-    for aviso in editado["observaciones"]:
-        st.info(aviso)
-
-    with st.expander("Modificaciones aplicadas"):
-        st.json(editado["modificaciones"])
-
-    st.download_button(
-        "Descargar plano modificado",
-        data=editado["dxf"],
-        file_name="plano_modificado.dxf",
-        mime="application/dxf",
-        type="primary",
-        on_click="ignore",
-    )
-
-    mostrar_resultado(editado["plano"], clave="edit")
-
-
-def seccion_editar():
-
-    st.divider()
-    st.header("2. Editar un plano existente")
-
-    archivo_dxf = st.file_uploader(
-        "Subir plano arquitectónico", type=["dxf"], key="archivo_dxf"
-    )
-
-    if archivo_dxf is None:
-        st.session_state.pop("editado", None)
-        return
-
-    try:
-        CARPETA_SALIDA.mkdir(parents=True, exist_ok=True)
-        ruta_entrada = CARPETA_SALIDA / "plano_subido.dxf"
-        ruta_entrada.write_bytes(archivo_dxf.getvalue())
-
-        st.success("Archivo DXF cargado correctamente.")
-
-        with st.spinner("Analizando el plano..."):
-            analisis = analizar_dxf(archivo_dxf.getvalue())
-
-        with st.expander("Información del plano"):
-            st.json(analisis)
-
-        instruccion_edicion = st.text_area(
-            "¿Qué modificaciones deseas realizar?",
-            height=120,
-            placeholder=(
-                "Ejemplo: Cambia el área del dormitorio principal a 20 m²."
-            ),
-            key="instruccion_edicion",
+        mostrar_resultado(
+            actual["resultado"], proyecto["requerimientos"], clave="proyecto"
         )
-
-        if st.button("Aplicar modificaciones"):
-            _aplicar_edicion(
-                instruccion_edicion, ruta_entrada, archivo_dxf.file_id
-            )
-
-        editado = st.session_state.get("editado")
-        if editado and editado["archivo"] == archivo_dxf.file_id:
-            _mostrar_editado(editado)
-
-    except Exception as error:  # límite de la UI
-        mostrar_error(error)
 
 
 # ============================================================
@@ -347,5 +328,9 @@ def main():
         "mediante inteligencia artificial."
     )
 
-    seccion_generar()
-    seccion_editar()
+    proyecto = st.session_state.get("proyecto")
+
+    if proyecto is None:
+        inicio()
+    else:
+        espacio_de_trabajo(proyecto)

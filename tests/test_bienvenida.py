@@ -71,8 +71,19 @@ def test_con_proveedor_valido_va_directo_a_la_app(entorno_vacio):
     at = _abrir_app()
 
     assert not at.exception
-    assert [h.value for h in at.header] == [
-        "1. Generar un nuevo plano",
-        "2. Editar un plano existente",
-    ]
+    assert [h.value for h in at.header] == ["Nuevo proyecto"]
     assert len(at.subheader) == 0 or at.subheader[0].value != "Falta un paso para empezar"
+
+
+def test_una_salida_sin_utf8_no_se_confunde_con_un_error_de_configuracion(entorno_vacio):
+    """UnicodeEncodeError es un ValueError: el aviso con emojis no debe disparar la bienvenida."""
+    import io
+    import sys
+
+    entorno_vacio.setenv("LLM_PROVIDER", "mock")
+    entorno_vacio.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="cp1252"))
+
+    at = _abrir_app()
+
+    assert not at.exception
+    assert [h.value for h in at.header] == ["Nuevo proyecto"]
