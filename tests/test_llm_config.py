@@ -102,3 +102,14 @@ class TestLLMConfigValidation:
         with patch.dict(os.environ, {"LLM_PROVIDER": "mock"}):
             msg = LLMConfig.mensaje_bienvenida()
             assert "Mock" in msg or "Test" in msg
+
+
+@pytest.mark.parametrize("proveedor", ["groq", "ollama", "proxy", "claude", "mock"])
+def test_el_mensaje_de_bienvenida_no_se_repite(proveedor):
+    """Regresión: `"texto" "━" * 40` repetía el título 40 veces en la terminal."""
+    with patch.dict(os.environ, {"LLM_PROVIDER": proveedor}, clear=True):
+        mensaje = LLMConfig.mensaje_bienvenida()
+
+    assert mensaje.count("Agente Arquitectónico") == 1
+    assert mensaje.count("━") == 40
+    assert len(mensaje.splitlines()) <= 6

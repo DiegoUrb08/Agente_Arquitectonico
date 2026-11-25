@@ -154,3 +154,32 @@ def test_registrar_error_y_usuario_añaden_mensajes(proyecto):
 
     assert [m["rol"] for m in proyecto["mensajes"][-2:]] == ["usuario", "error"]
     assert proyecto["mensajes"][-1]["detalle"] == "traza"
+
+
+def test_la_version_inicial_no_tiene_cambios(base):
+    assert base["versiones"][0]["cambiados"] == frozenset()
+
+
+def test_una_edicion_marca_solo_lo_que_cambio(proyecto):
+    pry.aplicar_edicion(proyecto, "uno", _reducir("dormitorio 1", 8))
+
+    cambiados = proyecto["versiones"][-1]["cambiados"]
+
+    assert "dormitorio_1" in cambiados
+    assert "sala_1" not in cambiados
+    assert "resaltado" in proyecto["mensajes"][-1]["texto"]
+
+
+def test_deshacer_restaura_los_cambios_de_esa_version(proyecto):
+    pry.aplicar_edicion(proyecto, "uno", _reducir("dormitorio 1", 8))
+    pry.deshacer(proyecto)
+
+    assert proyecto["versiones"][-1]["cambiados"] == frozenset()
+
+
+def test_ambientes_cambiados_compara_posicion_y_tamano(base):
+    igual = pry.ambientes_cambiados(
+        base["versiones"][0]["resultado"], base["versiones"][0]["resultado"]
+    )
+
+    assert igual == frozenset()

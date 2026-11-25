@@ -69,6 +69,25 @@ def _extraer_terreno_por_regex(texto: str) -> dict:
     return {}
 
 
+def _reconciliar_datos_faltantes(requerimientos) -> None:
+    """
+    Vacía `datos_faltantes`, dejando constancia en las observaciones.
+
+    Al llegar aquí el sistema ya completó todo lo necesario con valores por
+    defecto (pisos, área total, áreas por ambiente), y lo imprescindible (las
+    dimensiones del terreno y los ambientes) lo rechaza antes con un error
+    claro. Lo que el modelo siga marcando como faltante, p. ej. gpt-oss, no
+    debe impedir generar el plano.
+    """
+
+    if requerimientos.datos_faltantes:
+        requerimientos.observaciones.append(
+            "Se usaron valores por defecto para: "
+            + ", ".join(requerimientos.datos_faltantes)
+        )
+        requerimientos.datos_faltantes = []
+
+
 # ============================================================
 # 1. INTERPRETACION DE INSTRUCCIONES
 # ============================================================
@@ -270,7 +289,13 @@ No agregues explicaciones antes ni despues.
     )
 
     # --------------------------------------------------------
-    # 5. DEVOLVER REQUERIMIENTOS COMPLETOS
+    # 5. RECONCILIAR LOS DATOS FALTANTES
+    # --------------------------------------------------------
+
+    _reconciliar_datos_faltantes(requerimientos)
+
+    # --------------------------------------------------------
+    # 6. DEVOLVER REQUERIMIENTOS COMPLETOS
     # --------------------------------------------------------
 
     return requerimientos

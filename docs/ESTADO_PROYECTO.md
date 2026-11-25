@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **264 pruebas pytest pasan, 0 skipped** (~40 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
+- **290 pruebas pytest pasan, 0 skipped** (~40 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -269,7 +269,18 @@ Plan acordado: estilo "blueprint" oscuro, espacio de trabajo único (fase 3) y f
 
 **Resultado: 264 tests pasan, 0 skipped.**
 
-Siguiente (fase 4): ejemplos clicables en el inicio, resaltar en el plano lo que cambió, descargar el SVG, y una opción de ajustar la vista a la vivienda en terrenos grandes. Idea más ambiciosa: permitir peticiones que cambian el programa ("agrega un estudio") regenerando el plano a partir de la descripción ampliada.
+### Fase 4: pulido (2026-11-25)
+
+52. **Ejemplos clicables** (`interfaz.EJEMPLOS`, `st.pills` con `on_change`): cuatro ejemplos bajo el cuadro de texto que lo rellenan. Verificados contra Groq real: los cuatro generan plano (3 a 18 s).
+53. **Resaltado de cambios**: cada versión guarda `cambiados` (ids de ambientes cuya posición o tamaño difiere de la versión anterior, `proyecto.ambientes_cambiados`). El plano los dibuja con un borde ámbar parpadeante (capa "Cambios", apagable) y el chat lo indica.
+54. **Vista "Ajustar a la vivienda"** (`plano_svg.enfocar`): recorta la vista a la vivienda y las cotas pasan a medirla; por defecto se elige sola cuando la vivienda ocupa menos del 50 % del terreno (`fraccion_ocupada`), y se puede volver a "Terreno completo".
+55. **Descarga de la imagen en SVG** con fondo propio (`fondo_pagina`), respetando capas y vista; sin el resaltado (es una animación).
+56. **Bug importante con Groq: `datos_faltantes` bloqueaba casos básicos.** `gpt-oss-20b` marca como "faltantes" cosas que el sistema completa después (`numero_pisos`, `area_total_vivienda_m2`, adyacencias) y la UI se negaba a generar si la lista no estaba vacía; los cuatro ejemplos, incluido el principal, quedaban bloqueados. No se vio antes porque las pruebas reales llamaban a `generar_plano` directamente, saltándose esa comprobación. Ahora `interpretar_instruccion` vacía la lista y deja una observación ("Se usaron valores por defecto para: …"); lo imprescindible (terreno, ambientes) ya lo rechaza el sistema con un error claro. 4 tests, que fallan sin el arreglo.
+57. **Mensaje de bienvenida repetido 40 veces en la terminal**: `"texto" "━" * 40` repetía el texto entero por la precedencia de operadores (fallo de la fase 2). Corregido con un test de regresión.
+
+**Resultado: 290 tests pasan, 0 skipped.**
+
+Ideas siguientes: peticiones que cambian el programa ("agrega un estudio") regenerando el plano a partir de la descripción ampliada; edición de varias plantas; actualizar las versiones de `actions/checkout` y `actions/setup-python` (Node 20); probar Claude con una clave real.
 
 ## Acciones pendientes (priorizadas) — revisión 2026-11-24
 

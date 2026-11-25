@@ -93,46 +93,44 @@ class LLMConfig:
         """Devuelve un mensaje de bienvenida con instrucciones."""
         provider = os.getenv("LLM_PROVIDER", "groq").lower()
 
+        def banner(titulo: str, *lineas: str) -> str:
+            return "\n".join([titulo, "━" * 40, *lineas]) + "\n"
+
         if provider == "groq":
-            return (
-                "🚀 Agente Arquitectónico con Groq (gratis)\n"
-                "━" * 40 + "\n"
-                "Proveedor: Groq (openai/gpt-oss-20b)\n"
-                "Precio: Gratis, sin tarjeta de crédito\n"
-                "Velocidad: 100+ tokens/s\n"
+            return banner(
+                "🚀 Agente Arquitectónico con Groq (gratis)",
+                "Proveedor: Groq (openai/gpt-oss-20b)",
+                "Precio: Gratis, sin tarjeta de crédito",
+                "Velocidad: 100+ tokens/s",
             )
         elif provider == "ollama":
             host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-            return (
-                f"🚀 Agente Arquitectónico con Ollama (local)\n"
-                "━" * 40 + "\n"
-                f"Host: {host}\n"
-                f"Modelo: qwen3:8b (u otro instalado)\n"
-                "Precio: Gratis (local)\n"
+            return banner(
+                "🚀 Agente Arquitectónico con Ollama (local)",
+                f"Host: {host}",
+                "Modelo: qwen3:8b (u otro instalado)",
+                "Precio: Gratis (local)",
             )
         elif provider == "proxy":
             proxy_url = os.getenv("PROXY_URL", "(no configurada)")
-            return (
-                "🚀 Agente Arquitectónico con servidor Proxy (demo)\n"
-                "━" * 40 + "\n"
-                f"Servidor: {proxy_url}\n"
-                "Precio: Gratis, sujeto al límite del operador\n"
-                "Nota: para uso ilimitado, usa tu propia clave Groq\n"
+            return banner(
+                "🚀 Agente Arquitectónico con servidor Proxy (demo)",
+                f"Servidor: {proxy_url}",
+                "Precio: Gratis, sujeto al límite del operador",
+                "Nota: para uso ilimitado, usa tu propia clave Groq",
             )
         elif provider == "claude":
             modelo = os.getenv("LLM_CLAUDE_MODEL", "claude-opus-5-5")
-            return (
-                "🚀 Agente Arquitectónico con Claude (API de Anthropic)\n"
-                "━" * 40 + "\n"
-                f"Modelo: {modelo}\n"
-                "Precio: de pago, según uso de tu cuenta de Anthropic\n"
+            return banner(
+                "🚀 Agente Arquitectónico con Claude (API de Anthropic)",
+                f"Modelo: {modelo}",
+                "Precio: de pago, según uso de tu cuenta de Anthropic",
             )
         elif provider == "mock":
-            return (
-                "🧪 Agente Arquitectónico (Modo Mock - Tests)\n"
-                "━" * 40 + "\n"
-                "Proveedor: MockProvider (respuestas simuladas)\n"
-                "Uso: solo para testing\n"
+            return banner(
+                "🧪 Agente Arquitectónico (Modo Mock - Tests)",
+                "Proveedor: MockProvider (respuestas simuladas)",
+                "Uso: solo para testing",
             )
         else:
             return f"🚀 Agente Arquitectónico con {provider.upper()}\n"

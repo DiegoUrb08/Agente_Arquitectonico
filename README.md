@@ -26,13 +26,16 @@ asistente que crea el archivo `.env` por ti.
 ## Cómo se usa
 
 1. **Describe el proyecto** ("Vivienda de 10 x 20 m con sala, comedor, cocina,
-   2 dormitorios y 2 baños") o abre un plano `.dxf` que ya tengas.
+   2 dormitorios y 2 baños"), elige uno de los ejemplos o abre un plano `.dxf`
+   que ya tengas.
 2. **Mira el plano** en pantalla: habitaciones, muros, puertas, ventanas,
-   mobiliario y cotas, con capas que puedes activar y desactivar.
+   mobiliario y cotas, con capas que puedes activar y desactivar. Puedes ver
+   el terreno completo o ajustar la vista a la vivienda.
 3. **Pídele cambios en la conversación**: *«reduce el comedor a 8 m²»* o
    *«mueve el dormitorio 2 a la derecha de la cocina»*. Cada cambio crea una
-   versión nueva y puedes **deshacerlo**.
-4. **Descarga** el plano en DXF (AutoCAD, LibreCAD...) y el cuadro de áreas en CSV.
+   versión nueva, resalta en el plano lo que cambió y puedes **deshacerlo**.
+4. **Descarga** el plano en DXF (AutoCAD, LibreCAD...), una imagen en SVG y el
+   cuadro de áreas en CSV.
 
 Por ahora los cambios admitidos son cambiar el área de un ambiente y moverlo
 respecto a otro, y solo en planos de una planta.
@@ -178,7 +181,7 @@ src/
 server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
-tests/                  # 264 tests pytest
+tests/                  # 290 tests pytest
 ```
 
 ---

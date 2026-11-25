@@ -170,3 +170,75 @@ def test_proporcion_de_la_vista_coincide_con_el_viewbox(resultado):
     from src.ui.plano_svg import proporcion_vista
 
     assert proporcion_vista(resultado) == pytest.approx(alto / ancho, rel=1e-3)
+
+
+def _viewbox(svg: str) -> tuple[float, ...]:
+    return tuple(float(v) for v in _raiz(svg).get("viewBox").split())
+
+
+def test_enfocar_muestra_solo_la_vivienda(resultado):
+    from src.ui.plano_svg import fraccion_ocupada, proporcion_vista
+
+    completo = _viewbox(generar_svg_plano(resultado))
+    enfocado = _viewbox(generar_svg_plano(resultado, enfocar=True))
+
+    assert 0 < fraccion_ocupada(resultado) < 1
+    assert enfocado[3] < completo[3]
+    assert proporcion_vista(resultado, enfocar=True) == pytest.approx(
+        enfocado[3] / enfocado[2], rel=1e-3
+    )
+
+
+def test_enfocado_las_cotas_miden_la_vivienda(resultado):
+    ambientes = resultado.distribucion
+    ancho = max(a["x"] + a["ancho"] for a in ambientes) - min(a["x"] for a in ambientes)
+
+    svg = generar_svg_plano(resultado, enfocar=True)
+
+    assert f"{ancho:.2f} m" in svg
+    ET.fromstring(svg)
+
+
+def test_resalta_solo_los_ambientes_cambiados(resultado):
+    ids = [a["id"] for a in resultado.distribucion[:2]]
+
+    svg = generar_svg_plano(resultado, resaltar=frozenset(ids + ["no_existe"]))
+
+    assert _contar(svg, "cambio") == 2
+
+
+def test_la_capa_cambios_se_puede_apagar(resultado):
+    ids = frozenset(a["id"] for a in resultado.distribucion)
+
+    sin = generar_svg_plano(resultado, capas=CAPAS_POR_DEFECTO - {"cambios"}, resaltar=ids)
+
+    assert _contar(sin, "cambio") == 0
+
+
+def test_sin_resaltar_no_hay_cambios(resultado):
+    assert _contar(generar_svg_plano(resultado), "cambio") == 0
+
+
+def test_fondo_de_pagina_solo_si_se_pide(resultado):
+    from src.ui.plano_svg import FONDO_PAGINA
+
+    con = generar_svg_plano(resultado, fondo_pagina=True)
+    sin = generar_svg_plano(resultado)
+
+    assert f'fill="{FONDO_PAGINA}"' in con
+    assert f'fill="{FONDO_PAGINA}"' not in sin
+    ET.fromstring(con)
+
+
+@pytest.mark.parametrize("enfocar", [False, True])
+@pytest.mark.parametrize("fondo", [False, True])
+def test_todas_las_combinaciones_son_xml_valido(resultado, enfocar, fondo):
+    svg = generar_svg_plano(
+        resultado,
+        enfocar=enfocar,
+        fondo_pagina=fondo,
+        ocupar_contenedor=True,
+        resaltar=frozenset(a["id"] for a in resultado.distribucion),
+    )
+
+    assert _raiz(svg).tag.endswith("svg")

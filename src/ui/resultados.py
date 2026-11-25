@@ -8,6 +8,7 @@ from src.ui.proyecto import dimensiones_terreno, pisos_de
 from src.ui.plano_svg import (
     color_de_ambiente,
     etiquetas_ambientes,
+    fraccion_ocupada,
     generar_svg_plano,
     proporcion_vista,
 )
@@ -18,7 +19,11 @@ CAPAS = {
     "Ventanas": "ventanas",
     "Muebles": "muebles",
     "Cotas": "cotas",
+    "Cambios": "cambios",
 }
+
+VISTA_TERRENO = "Terreno completo"
+VISTA_VIVIENDA = "Ajustar a la vivienda"
 
 
 def etiquetas_de_pisos(cantidad: int) -> list[str]:
@@ -67,21 +72,28 @@ def _leyenda_html(piso) -> str:
     )
 
 
-def _mostrar_svg(piso, capas, clave: str) -> None:
+def _mostrar_svg(piso, capas, clave: str, enfocar: bool, cambiados) -> None:
     """El SVG va en un iframe: st.html descarta las etiquetas <svg>."""
-    svg = generar_svg_plano(piso, capas, uid=clave, ocupar_contenedor=True)
+    svg = generar_svg_plano(
+        piso,
+        capas,
+        uid=clave,
+        ocupar_contenedor=True,
+        enfocar=enfocar,
+        resaltar=cambiados,
+    )
     documento = (
         '<!doctype html><html><head><meta charset="utf-8">'
         "<style>html,body{height:100%;margin:0;overflow:hidden;"
         "background:transparent}</style></head>"
         f"<body>{svg}</body></html>"
     )
-    altura = int(max(360, min(780, 640 * proporcion_vista(piso))))
+    altura = int(max(360, min(780, 640 * proporcion_vista(piso, enfocar))))
     st.iframe(documento, height=altura)
 
 
 @st.fragment
-def visor_plano(piso, clave: str) -> None:
+def visor_plano(piso, clave: str, cambiados=frozenset(), archivo: str = "plano.svg") -> None:
     """Vista previa con capas conmutables; solo se vuelve a ejecutar este bloque."""
 
     elegidas = st.pills(
@@ -93,9 +105,36 @@ def visor_plano(piso, clave: str) -> None:
     )
     capas = frozenset(CAPAS[e] for e in (elegidas or []))
 
+    por_defecto = VISTA_VIVIENDA if fraccion_ocupada(piso) < 0.5 else VISTA_TERRENO
+    vista = st.segmented_control(
+        "Vista",
+        [VISTA_TERRENO, VISTA_VIVIENDA],
+        default=por_defecto,
+        key=f"vista_{clave}",
+    )
+    enfocar = vista == VISTA_VIVIENDA
+
     st.html(_leyenda_html(piso))
-    _mostrar_svg(piso, capas, clave)
-    st.caption("Pasa el cursor sobre una habitación para ver sus medidas.")
+    _mostrar_svg(piso, capas, clave, enfocar, cambiados)
+
+    if cambiados and "cambios" in capas:
+        st.caption("En ámbar parpadeante: lo que cambió en esta versión.")
+    else:
+        st.caption("Pasa el cursor sobre una habitación para ver sus medidas.")
+
+    st.download_button(
+        "Descargar imagen (SVG)",
+        data=generar_svg_plano(
+            piso,
+            capas - {"cambios"},
+            uid=f"{clave}-archivo",
+            enfocar=enfocar,
+            fondo_pagina=True,
+        ),
+        file_name=archivo,
+        mime="image/svg+xml",
+        on_click="ignore",
+    )
 
 
 def tabla_ambientes(piso) -> None:
@@ -180,8 +219,13 @@ def mostrar_puertas(resultado_puertas) -> None:
     )
 
 
-def mostrar_resultado(resultado, requerimientos=None, clave: str = "gen") -> None:
-    """Tarjetas + pestañas de un resultado (un piso o varios)."""
+def mostrar_resultado(
+    resultado, requerimientos=None, clave: str = "gen", cambiados=frozenset()
+) -> None:
+    """Tarjetas + pestañas de un resultado (un piso o varios).
+
+    `cambiados` son los ids de ambientes a resaltar en el plano.
+    """
 
     pisos = pisos_de(resultado)
     etiquetas = etiquetas_de_pisos(len(pisos))
@@ -201,8 +245,10 @@ def mostrar_resultado(resultado, requerimientos=None, clave: str = "gen") -> Non
         nombres.append("Requerimientos")
     pestanas = st.tabs(nombres)
 
+    archivo = "plano.svg" if len(pisos) == 1 else f"plano_planta_{indice + 1}.svg"
+
     with pestanas[0]:
-        visor_plano(piso, f"{clave}-{indice}")
+        visor_plano(piso, f"{clave}-{indice}", cambiados, archivo)
     with pestanas[1]:
         tabla_ambientes(piso)
     with pestanas[2]:

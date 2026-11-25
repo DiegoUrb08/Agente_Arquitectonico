@@ -4,7 +4,9 @@ from html import escape
 
 from src.utils.texto import normalizar_nombre
 
-CAPAS_POR_DEFECTO = frozenset({"etiquetas", "puertas", "ventanas", "muebles", "cotas"})
+CAPAS_POR_DEFECTO = frozenset(
+    {"etiquetas", "puertas", "ventanas", "muebles", "cotas", "cambios"}
+)
 
 FONDO = "#0F2740"
 MALLA = "#1B4166"
@@ -94,14 +96,38 @@ def _path_de_geometria(geometria, convertir) -> str:
 
 
 MARGEN_IZQ, MARGEN_SUP, MARGEN_DER, MARGEN_INF = 1.7, 0.6, 0.6, 1.7
+FONDO_PAGINA = "#0A1A2F"
+CAMBIO = "#FBBF24"
 
 
-def proporcion_vista(resultado) -> float:
+def _limites_vivienda(resultado) -> tuple[float, float, float, float]:
+    ambientes = resultado.distribucion
+    return (
+        min(a["x"] for a in ambientes),
+        min(a["y"] for a in ambientes),
+        max(a["x"] + a["ancho"] for a in ambientes),
+        max(a["y"] + a["largo"] for a in ambientes),
+    )
+
+
+def _marco(resultado, enfocar: bool) -> tuple[float, float, float, float]:
+    """Zona que se muestra: el terreno completo o solo la vivienda."""
+    return _limites_vivienda(resultado) if enfocar else _limites(resultado)
+
+
+def proporcion_vista(resultado, enfocar: bool = False) -> float:
     """Alto / ancho de la vista (incluye los márgenes de las cotas)."""
-    minx, miny, maxx, maxy = _limites(resultado)
+    minx, miny, maxx, maxy = _marco(resultado, enfocar)
     return ((maxy - miny) + MARGEN_SUP + MARGEN_INF) / (
         (maxx - minx) + MARGEN_IZQ + MARGEN_DER
     )
+
+
+def fraccion_ocupada(resultado) -> float:
+    """Qué parte del terreno ocupa la vivienda (0 a 1, por su rectángulo envolvente)."""
+    tx0, ty0, tx1, ty1 = _limites(resultado)
+    vx0, vy0, vx1, vy1 = _limites_vivienda(resultado)
+    return ((vx1 - vx0) * (vy1 - vy0)) / ((tx1 - tx0) * (ty1 - ty0))
 
 
 def generar_svg_plano(
@@ -109,17 +135,24 @@ def generar_svg_plano(
     capas=CAPAS_POR_DEFECTO,
     uid: str = "plano",
     ocupar_contenedor: bool = False,
+    enfocar: bool = False,
+    resaltar=frozenset(),
+    fondo_pagina: bool = False,
 ) -> str:
     """SVG del plano de un piso (`ResultadoPlano`).
 
     El eje Y se invierte (como en el DXF, el origen queda abajo a la izquierda).
-    `capas` admite: etiquetas, puertas, ventanas, muebles, cotas.
+    `capas` admite: etiquetas, puertas, ventanas, muebles, cotas, cambios.
     Con `ocupar_contenedor` el SVG llena su contenedor (p. ej. un iframe de
     alto fijo) en lugar de calcular su alto por proporción.
+    Con `enfocar` solo se muestra la vivienda (y las cotas miden la vivienda).
+    `resaltar` son los ids de ambientes que cambiaron (capa "cambios").
+    `fondo_pagina` añade un fondo sólido, para guardar el SVG como archivo.
     """
-    minx, miny, maxx, maxy = _limites(resultado)
+    minx, miny, maxx, maxy = _marco(resultado, enfocar)
     ancho = maxx - minx
     largo = maxy - miny
+    tx0, ty0, tx1, ty1 = _limites(resultado)
 
     def px(x: float) -> float:
         return x - minx
@@ -139,19 +172,38 @@ def generar_svg_plano(
         dimension = 'width="100%" style="display:block;max-width:100%;height:auto"'
 
     malla = f"malla-{uid}"
+    recorte = f"recorte-{uid}"
+    terreno = (
+        f'x="{_n(px(tx0))}" y="{_n(py(ty1))}" '
+        f'width="{_n(tx1 - tx0)}" height="{_n(ty1 - ty0)}"'
+    )
     s: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" role="img" '
         f'aria-label="Vista previa del plano" '
         f'viewBox="{_n(-MARGEN_IZQ)} {_n(-MARGEN_SUP)} {_n(vb_ancho)} {_n(vb_alto)}" '
         f'{dimension} font-family="{FUENTE}">',
         "<style>.amb rect{transition:fill-opacity .25s}"
-        ".amb:hover rect{fill-opacity:.5}</style>",
+        ".amb:hover rect{fill-opacity:.5}"
+        ".cambio{animation:pulso 1.8s ease-in-out infinite}"
+        "@keyframes pulso{0%,100%{stroke-opacity:1}50%{stroke-opacity:.25}}</style>",
         f'<defs><pattern id="{malla}" width="1" height="1" patternUnits="userSpaceOnUse">'
         f'<path d="M1 0H0V1" fill="none" stroke="{MALLA}" stroke-width="0.02"/>'
-        f"</pattern></defs>",
-        f'<rect x="0" y="0" width="{_n(ancho)}" height="{_n(largo)}" fill="{FONDO}"/>',
-        f'<rect x="0" y="0" width="{_n(ancho)}" height="{_n(largo)}" fill="url(#{malla})"/>',
-        f'<rect x="0" y="0" width="{_n(ancho)}" height="{_n(largo)}" fill="none" '
+        f"</pattern>"
+        f'<clipPath id="{recorte}"><rect x="{_n(-MARGEN_IZQ)}" y="{_n(-MARGEN_SUP)}" '
+        f'width="{_n(vb_ancho)}" height="{_n(vb_alto)}"/></clipPath></defs>',
+    ]
+
+    if fondo_pagina:
+        s.append(
+            f'<rect x="{_n(-MARGEN_IZQ)}" y="{_n(-MARGEN_SUP)}" '
+            f'width="{_n(vb_ancho)}" height="{_n(vb_alto)}" fill="{FONDO_PAGINA}"/>'
+        )
+
+    s += [
+        f'<g clip-path="url(#{recorte})">',
+        f'<rect {terreno} fill="{FONDO}"/>',
+        f'<rect {terreno} fill="url(#{malla})"/>',
+        f'<rect {terreno} fill="none" '
         f'stroke="{LIMITE_TERRENO}" stroke-width="0.05" stroke-dasharray="0.3 0.2"/>',
     ]
 
@@ -175,6 +227,17 @@ def generar_svg_plano(
         trazo = _path_de_geometria(muros, punto)
         if trazo:
             s.append(f'<path d="{trazo}" fill="{MURO}" fill-rule="evenodd"/>')
+
+    if "cambios" in capas:
+        for a in resultado.distribucion:
+            if a["id"] in resaltar:
+                s.append(
+                    f'<rect class="cambio" x="{_n(px(a["x"]))}" '
+                    f'y="{_n(py(a["y"] + a["largo"]))}" width="{_n(a["ancho"])}" '
+                    f'height="{_n(a["largo"])}" fill="{CAMBIO}" fill-opacity="0.12" '
+                    f'stroke="{CAMBIO}" stroke-width="0.1">'
+                    f"<title>Modificado</title></rect>"
+                )
 
     if "muebles" in capas and resultado.mobiliario:
         for m in resultado.mobiliario.get("mobiliario", []):
@@ -264,5 +327,5 @@ def generar_svg_plano(
             f'text-anchor="middle" font-size="0.42" fill="{TEXTO_SUAVE}">{largo:.2f} m</text>'
         )
 
-    s.append("</svg>")
+    s.append("</g></svg>")
     return "".join(s)

@@ -90,12 +90,30 @@ def _mensaje(rol: str, texto: str, detalle: str | None = None) -> dict:
     return {"rol": rol, "texto": texto, "detalle": detalle}
 
 
-def _version(resultado, dxf: bytes, etiqueta: str) -> dict:
+def _geometria(ambiente: dict) -> tuple:
+    return tuple(round(ambiente[k], 3) for k in ("x", "y", "ancho", "largo"))
+
+
+def ambientes_cambiados(antes, despues) -> frozenset:
+    """Ids de los ambientes cuya posición o tamaño difiere entre dos planos."""
+    previos = {
+        a["id"]: _geometria(a) for p in pisos_de(antes) for a in p.distribucion
+    }
+    return frozenset(
+        a["id"]
+        for p in pisos_de(despues)
+        for a in p.distribucion
+        if previos.get(a["id"]) != _geometria(a)
+    )
+
+
+def _version(resultado, dxf: bytes, etiqueta: str, cambiados=frozenset()) -> dict:
     return {
         "resultado": resultado,
         "dxf": dxf,
         "csv": generar_csv_areas(resultado),
         "etiqueta": etiqueta,
+        "cambiados": frozenset(cambiados),
     }
 
 
@@ -177,12 +195,15 @@ def aplicar_edicion(proyecto: dict, texto: str, solicitud) -> None:
 
     lineas = resumen_modificaciones(resultado["modificaciones"])
     numero = len(proyecto["versiones"]) + 1
+    cambiados = ambientes_cambiados(actual["resultado"], resultado["plano"])
 
     proyecto["versiones"].append(
-        _version(resultado["plano"], dxf, "; ".join(lineas))
+        _version(resultado["plano"], dxf, "; ".join(lineas), cambiados)
     )
 
     respuesta = f"Listo, versión {numero}:\n" + "\n".join(f"- {l}" for l in lineas)
+    if cambiados:
+        respuesta += "\n\nLo modificado aparece resaltado en el plano."
     for aviso in resultado["observaciones"]:
         respuesta += f"\n\n⚠️ {aviso}"
     proyecto["mensajes"].append(_mensaje("agente", respuesta))

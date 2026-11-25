@@ -145,3 +145,27 @@ def test_con_varias_plantas_la_conversacion_queda_desactivada(entorno):
 
     assert at.chat_input[0].disabled
     assert "varias plantas" in at.chat_message[1].markdown[0].value
+
+
+def test_los_ejemplos_rellenan_el_cuadro_de_texto(entorno):
+    from src.ui.interfaz import EJEMPLOS
+
+    at = _abrir()
+
+    at.pills[0].set_value("Vivienda familiar").run()
+
+    assert at.text_area[0].value == EJEMPLOS["Vivienda familiar"]
+    assert at.pills[0].value is None, "debe poder elegirse otra vez el mismo ejemplo"
+
+
+def test_el_visor_ofrece_capas_cambios_y_vista(entorno):
+    from src.ui.resultados import VISTA_TERRENO, VISTA_VIVIENDA
+
+    at = _con_plano()
+
+    capas = next(p for p in at.pills if "Cambios" in p.options)
+    vista = at.segmented_control[0]
+
+    assert "Cambios" in capas.options
+    assert vista.options == [VISTA_TERRENO, VISTA_VIVIENDA]
+    assert vista.value == VISTA_VIVIENDA, "el plano fijo ocupa ~35 % del terreno"

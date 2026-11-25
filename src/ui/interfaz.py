@@ -107,6 +107,33 @@ def _abrir(archivo) -> None:
     st.rerun()
 
 
+EJEMPLOS = {
+    "Casa pequeña": (
+        "Casa de 8 x 15 metros con sala, cocina, 2 dormitorios y 1 baño."
+    ),
+    "Vivienda familiar": (
+        "Vivienda de 10 x 20 metros con sala, comedor, cocina, "
+        "2 dormitorios y 2 baños."
+    ),
+    "Casa de dos pisos": (
+        "Casa de dos pisos en un terreno de 12 x 25 metros con sala, comedor, "
+        "cocina, estudio, 3 dormitorios y 2 baños."
+    ),
+    "Solo el área del terreno": (
+        "Vivienda en un terreno de 200 m² con 3 dormitorios, sala, cocina "
+        "y 2 baños."
+    ),
+}
+
+
+def _usar_ejemplo() -> None:
+    """Copia el ejemplo elegido al cuadro de texto y deja volver a elegirlo."""
+    elegido = st.session_state.get("ejemplo")
+    if elegido:
+        st.session_state["instruccion"] = EJEMPLOS[elegido]
+        st.session_state["ejemplo"] = None
+
+
 def inicio() -> None:
 
     st.header("Nuevo proyecto")
@@ -118,6 +145,14 @@ def inicio() -> None:
             "Ejemplo: Diseña una vivienda de 150 m² de terreno "
             "con dos dormitorios, sala, comedor, cocina y dos baños."
         ),
+        key="instruccion",
+    )
+
+    st.pills(
+        "O empieza con un ejemplo",
+        list(EJEMPLOS),
+        key="ejemplo",
+        on_change=_usar_ejemplo,
     )
 
     if st.button("Generar plano", type="primary"):
@@ -225,7 +260,10 @@ def espacio_de_trabajo(proyecto: dict) -> None:
         )
 
         mostrar_resultado(
-            actual["resultado"], proyecto["requerimientos"], clave="proyecto"
+            actual["resultado"],
+            proyecto["requerimientos"],
+            clave="proyecto",
+            cambiados=actual["cambiados"],
         )
 
 

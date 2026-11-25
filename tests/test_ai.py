@@ -307,3 +307,80 @@ def test_interpretar_edicion_fuera_de_catalogo_da_mensaje_amigable(monkeypatch):
     with pytest.raises(ValueError, match="ambiente soportado") as info:
         edit_interpreter.interpretar_edicion("agrega una piscina")
     assert "validar" in str(info.value)
+
+
+# ---------------- datos faltantes ----------------
+
+def test_lo_que_el_sistema_completa_no_bloquea_la_generacion(monkeypatch):
+    """gpt-oss marca pisos y área total como 'faltantes'; el sistema ya los estima."""
+    datos = {
+        "tipo_proyecto": "vivienda",
+        "ancho_terreno_m": 10.0,
+        "largo_terreno_m": 20.0,
+        "ambientes": [{"nombre": "sala", "cantidad": 1}],
+        "datos_faltantes": ["numero_pisos", "area_total_vivienda_m2"],
+    }
+    _mockear_provider(monkeypatch, datos)
+
+    req = interpreter.interpretar_instruccion("casa de 10 x 20 con sala")
+
+    assert req.datos_faltantes == []
+    assert any(
+        o.startswith("Se usaron valores por defecto para: numero_pisos")
+        for o in req.observaciones
+    )
+
+
+def test_el_area_del_terreno_basta_aunque_el_modelo_pida_las_dimensiones(monkeypatch):
+    datos = {
+        "tipo_proyecto": "vivienda",
+        "area_terreno_m2": 200,
+        "ambientes": [{"nombre": "sala", "cantidad": 1}],
+        "datos_faltantes": ["dimensiones del terreno (ancho y largo)"],
+    }
+    _mockear_provider(monkeypatch, datos)
+
+    req = interpreter.interpretar_instruccion("vivienda en un terreno de 200 m2")
+
+    assert req.datos_faltantes == []
+    assert req.ancho_terreno_m and req.largo_terreno_m
+
+
+def test_sin_ambientes_el_sistema_lo_rechaza_con_un_mensaje_claro(monkeypatch):
+    datos = {
+        "tipo_proyecto": "vivienda",
+        "ancho_terreno_m": 10.0,
+        "largo_terreno_m": 20.0,
+        "ambientes": [],
+        "datos_faltantes": ["ambientes"],
+    }
+    _mockear_provider(monkeypatch, datos)
+
+    with pytest.raises(ValueError, match="No se han especificado ambientes"):
+        interpreter.interpretar_instruccion("una casa de 10 x 20")
+
+
+def test_sin_terreno_el_sistema_lo_rechaza_con_un_mensaje_claro(monkeypatch):
+    datos = {
+        "tipo_proyecto": "vivienda",
+        "ambientes": [{"nombre": "sala", "cantidad": 1}],
+    }
+    _mockear_provider(monkeypatch, datos)
+
+    with pytest.raises(ValueError, match="No se especifico el area ni las dimensiones"):
+        interpreter.interpretar_instruccion("una casa con sala")
+
+
+def test_si_el_modelo_no_marca_nada_no_se_anota_nada(monkeypatch):
+    datos = {
+        "tipo_proyecto": "vivienda",
+        "ancho_terreno_m": 10.0,
+        "largo_terreno_m": 20.0,
+        "ambientes": [{"nombre": "sala", "cantidad": 1}],
+    }
+    _mockear_provider(monkeypatch, datos)
+
+    req = interpreter.interpretar_instruccion("casa de 10 x 20 con sala")
+
+    assert req.datos_faltantes == []
+    assert not any(o.startswith("Se usaron valores") for o in req.observaciones)
