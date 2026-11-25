@@ -282,6 +282,22 @@ Plan acordado: estilo "blueprint" oscuro, espacio de trabajo único (fase 3) y f
 
 Ideas siguientes: peticiones que cambian el programa ("agrega un estudio") regenerando el plano a partir de la descripción ampliada; edición de varias plantas; actualizar las versiones de `actions/checkout` y `actions/setup-python` (Node 20); probar Claude con una clave real.
 
+## Nuevas prioridades — 2026-11-25
+
+Estas tres van por delante de todo lo demás, en este orden.
+
+### 1. Distribución con lógica arquitectónica
+Con prompts ambiguos ("quiero 2 baños, 2 dormitorios, 1 sala...") la distribución que sale del optimizador no tiene lógica arquitectónica. Hay que definir reglas por defecto que se apliquen aunque el usuario no las pida, para que los planos sean funcionales. Por ejemplo:
+- Dos baños no pueden estar juntos.
+- Al menos una puerta debe dar al exterior.
+- (Ampliar la lista: zonificación social/privada, acceso a baños desde zonas de circulación, cocina junto al comedor, etc.)
+
+### 2. Vista 3D del plano
+Un apartado con un renderizado 3D del plano, con los techos abiertos. No tiene que ser simple: debe notarse que es 3D, la cámara debe poder girar y los muebles, puertas y paredes deben verse bien delimitados.
+
+### 3. Modo pantalla completa
+Poder ver el plano (y, cuando exista, la vista 3D) a pantalla completa.
+
 ## Acciones pendientes (priorizadas) — revisión 2026-11-24
 
 ### Prioridad alta: antes de publicar en GitHub
