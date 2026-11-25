@@ -160,11 +160,11 @@ src/
   geometry/             # Geometría Shapely (muros, puertas, ventanas)
   cad/                  # Generación y edición de DXF (ezdxf)
   services/             # Pipeline completo: LLM → optimizador → DXF
-  ui/                   # Interfaz Streamlit
+  ui/                   # Interfaz Streamlit: tema blueprint, vista previa SVG del plano
 server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
-tests/                  # 219 tests pytest
+tests/                  # 242 tests pytest
 ```
 
 ---

@@ -22,7 +22,7 @@
 | `src/cad` | `dxf_base`, `dxf_generator`, `dxf_aberturas`, `dxf_mobiliario`, `furniture_symbols`, `dxf_reader`, `dxf_editor` | `dxf_base` define el contrato generador↔editor (capas, XDATA, unidades). |
 
 ## Pruebas
-- **219 pruebas pytest pasan, 0 skipped** (~35 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
+- **242 pruebas pytest pasan, 0 skipped** (~30 s; CI en `.github/workflows/tests.yml`): modelos, grafo, defaults, esquema de distribución, geometría, adyacencias, puertas, muros, aberturas, DXF (con y sin mobiliario, escalera con peldaños, multipisos), lector, editor (ida y vuelta con el generador), capa `ai` con Ollama simulado (incluye reintentos, historial y fallback regex), pipeline completo (un piso y múltiples pisos), mobiliario automático (nuevas plantillas) y arranque de la UI con `streamlit.testing.AppTest`.
 - Los 12 scripts de `scripts/diagnostico/` se conservan y **todos se ejecutan sin error** (`PYTHONPATH` en la raíz). `diag_space_graph.py` se reescribió para la API actual; `diag_optimizador.py` es el bloque de prueba extraído de `layout_optimizer.py`.
 - Las pruebas de `ai` simulan Ollama; el flujo real se verificó aparte (ver más abajo).
 
@@ -242,6 +242,21 @@
 39. **Publicación**: repo público con licencia MIT; el README usa ya la URL real del repo y explica el primer arranque.
 
 **Resultado: 219 tests pasan, 0 skipped.**
+
+## Rediseño de la interfaz — fases 1 y 2 (2026-11-24)
+
+Plan acordado: estilo "blueprint" oscuro, espacio de trabajo único (fase 3) y fases 1-2 primero. La lógica de UI se repartió en módulos: `interfaz.py` (orquestación), `resultados.py` (tarjetas, pestañas, visor), `plano_svg.py` (SVG puro, sin Streamlit) y `tema.py` (estilos).
+
+40. **Resultados que persisten** (`session_state`): antes, pulsar "Descargar" (o cualquier widget) reejecutaba la página y el plano desaparecía. Ahora el resultado de generar y el de editar se guardan en `session_state` y los botones de descarga usan `on_click="ignore"`.
+41. **Tema blueprint** (`.streamlit/config.toml`, `src/ui/tema.py`): paleta azul marino con acento cian, malla de fondo, título con degradado, botón primario con texto oscuro y barra de herramientas mínima (sin "Deploy").
+42. **Tarjetas y pestañas**: tarjetas de métricas (terreno, ambientes, superficie, puertas · ventanas, conectividad) y pestañas Plano / Ambientes / Conectividad / Puertas / Requerimientos; selector de planta si hay varios pisos; descarga de DXF y CSV del cuadro de áreas. La edición también muestra el plano resultante.
+43. **Vista previa SVG del plano** (`plano_svg.generar_svg_plano`): habitaciones por color de tipo, muros (con huecos de puertas y ventanas), puertas, ventanas, mobiliario, etiquetas con m², cotas y leyenda; capas conmutables dentro de un `st.fragment` (no recalcula el plano). Detalles: el eje Y se invierte como en el DXF; los textos se escapan porque el SVG va en `st.iframe` (HTML sin sanear). **`st.html` descarta las etiquetas `<svg>`**, por eso no se usa. El iframe necesita `html, body {height: 100%}` o el dibujo se recorta por abajo.
+44. **Verificación visual**: se hicieron capturas de la app real con Edge headless (protocolo DevTools) usando un arnés fuera del repo; se revisaron un piso, dos pisos y el apagado de capas. Dos falsos positivos se debieron a que la ventana de captura era más baja que la página.
+45. Tests nuevos: `test_plano_svg.py` (20) y `test_resultados_ui.py` (3, incluye que el resultado sobrevive a otra interacción). Un test frágil se corrigió: asumía una habitación en y=0 y el optimizador no es determinista.
+
+**Resultado: 242 tests pasan, 0 skipped.** Una ejecución de la suite se colgó una vez (más de 5 min) y no se repitió en las siguientes (~30 s); causa sin identificar.
+
+Siguientes pasos del rediseño: fase 3 (espacio de trabajo único: generar y refinar sobre el mismo plano, con deshacer) y fase 4 (ejemplos clicables, resaltado de cambios, SVG descargable, opción de ajustar la vista a la vivienda en terrenos grandes).
 
 ## Acciones pendientes (priorizadas) — revisión 2026-11-24
 
