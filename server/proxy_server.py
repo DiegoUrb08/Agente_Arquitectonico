@@ -67,8 +67,12 @@ def chat():
         if token_recibido != PROXY_ACCESS_TOKEN:
             return jsonify({"error": "Token de acceso inválido."}), 401
 
-    ip_cliente = request.headers.get("X-Forwarded-For", request.remote_addr)
-    ip_cliente = (ip_cliente or "desconocida").split(",")[0].strip()
+    # El servidor solo escucha en 127.0.0.1: las únicas conexiones que llegan
+    # desde localhost son las del túnel de Cloudflare, que fija CF-Connecting-IP.
+    # Cualquier otra cabecera enviada por el cliente se ignora.
+    ip_cliente = request.remote_addr
+    if ip_cliente in ("127.0.0.1", "::1"):
+        ip_cliente = request.headers.get("CF-Connecting-IP", ip_cliente)
 
     if _limite_excedido(ip_cliente):
         return jsonify({
@@ -118,5 +122,6 @@ def health():
 
 
 if __name__ == "__main__":
+    from waitress import serve
     puerto = int(os.getenv("PORT", "8000"))
-    app.run(host="0.0.0.0", port=puerto)
+    serve(app, host="127.0.0.1", port=puerto)

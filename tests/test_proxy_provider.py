@@ -146,6 +146,26 @@ class TestProxyServerIntegration:
             assert r2.status_code == 200
             assert r3.status_code == 429
 
+    def test_cabecera_x_forwarded_for_no_evade_rate_limit(self, cliente_servidor):
+        from server import proxy_server
+        with patch("groq.Groq") as MockGroq:
+            mock_instancia = MagicMock()
+            mock_instancia.chat.completions.create.return_value.choices = [
+                MagicMock(message=MagicMock(content="ok"))
+            ]
+            MockGroq.return_value = mock_instancia
+
+            payload = {"messages": [{"role": "user", "content": "hola"}]}
+            codigos = [
+                cliente_servidor.post(
+                    "/chat", json=payload,
+                    headers={"X-Forwarded-For": f"10.0.0.{i}"},
+                ).status_code
+                for i in range(3)
+            ]
+            assert codigos[:2] == [200, 200]
+            assert codigos[2] == 429
+
     def test_token_invalido_devuelve_401(self, cliente_servidor, monkeypatch):
         monkeypatch.setenv("PROXY_ACCESS_TOKEN", "correcto")
         import importlib
