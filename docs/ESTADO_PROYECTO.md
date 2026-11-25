@@ -239,7 +239,6 @@
 ## Acciones pendientes (priorizadas) — revisión 2026-11-24
 
 ### Prioridad alta: antes de publicar en GitHub
-- **Revocar la clave de Groq pegada en el chat** (`gsk_GoWQ…`) en console.groq.com/keys. Sigue sin confirmarse.
 - **Publicar el remoto y verificar el primer run de CI** en GitHub (`.github/workflows/tests.yml`).
 - **Probar `ClaudeProvider` con una clave real** de Anthropic (una llamada de interpretación y una de edición).
 - **Refusal fallbacks de Claude**: la API admite reintentar automáticamente en otro modelo cuando un clasificador de seguridad rechaza la petición (parámetro `fallbacks` en el endpoint beta). No se activó porque no se pudo probar; hoy un rechazo se muestra como error claro.
