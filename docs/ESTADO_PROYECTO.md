@@ -4,7 +4,7 @@
 
 ## Entorno y herramientas
 - `.venv` funcional: Python 3.14.7, streamlit 1.67, ollama 0.6.3, ortools 9.15, shapely 2.2, ezdxf 1.4.5, pydantic 2.14, pytest 9.2.
-- Git 2.56.1 instalado; repositorio local en rama `main` (sin remoto; nada publicado). `.gitignore` excluye `.venv`, cachés, `.env`, credenciales y `output/`.
+- Git 2.56.1 instalado; rama `main` publicada en https://github.com/DiegoUrb08/Agente_Arquitectonico (público, licencia MIT; publicado el 2026-11-24). `.gitignore` excluye `.venv`, cachés, `.env`, credenciales y `output/`.
 - `requirements.txt` (dependencias directas + pytest) y `pytest.ini`.
 - Proveedor LLM por defecto: Groq (`openai/gpt-oss-20b`). Alternativa local: Ollama con `qwen3:8b`. Arranque: `streamlit run app.py`.
 
@@ -84,7 +84,7 @@
 - Las ventanas tienen ancho fijo por tipo de ambiente (sin altura de alféizar ni orientación solar) y se colocan en cualquier pared exterior, incluso la que da a un hueco interior entre ambientes.
 - El editor solo opera con habitaciones rectangulares y DXF en metros.
 - En distribuciones muy compactas, `modificar_area` y `mover_ambiente` suelen rechazar el cambio por falta de espacio (comportamiento correcto, pero limitante).
-- Sin remoto Git publicado todavía; el workflow de CI existe pero no se ha ejecutado en GitHub.
+- El CI de GitHub Actions pasó en su primer run (2026-11-24, 1 min 11 s). Aviso pendiente: `actions/checkout@v4` y `actions/setup-python@v5` usan Node.js 20, que GitHub está retirando (hoy se fuerza Node 24); conviene subir sus versiones.
 
 ## Correcciones del benchmark implementadas
 1. ~~**Lista blanca de ambientes**~~ **Implementado:** `AMBIENTES_VALIDOS` en `reglas_ambientes.py` (15 tipos); `_validar_ambientes` en `layout_optimizer.py` rechaza tipos fuera de catálogo antes de CP-SAT con mensaje claro. "piscina" se rechaza ahora.
@@ -239,7 +239,6 @@
 ## Acciones pendientes (priorizadas) — revisión 2026-11-24
 
 ### Prioridad alta: antes de publicar en GitHub
-- **Publicar el remoto y verificar el primer run de CI** en GitHub (`.github/workflows/tests.yml`).
 - **Probar `ClaudeProvider` con una clave real** de Anthropic (una llamada de interpretación y una de edición). Sin probar a 2026-11-24: el dueño del proyecto no tiene saldo de API y decidió no gastar. Comprobado sin red: el SDK acepta los parámetros enviados y el cuerpo de la petición coincide con la documentación; README y `.env.example` avisan de que no está probado. Coste estimado de una prueba: ~2-3 centavos con `claude-opus-5-5` por plano generado, ~0,1 centavos con `claude-haiku-5-5`.
 - **Refusal fallbacks de Claude**: la API admite reintentar automáticamente en otro modelo cuando un clasificador de seguridad rechaza la petición (parámetro `fallbacks` en el endpoint beta). No se activó porque no se pudo probar; hoy un rechazo se muestra como error claro.
 
