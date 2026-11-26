@@ -2,10 +2,11 @@
 
 from html import escape
 
+from src.geometry.medidas import medidas_de_ambiente
 from src.utils.texto import normalizar_nombre
 
 CAPAS_POR_DEFECTO = frozenset(
-    {"etiquetas", "puertas", "ventanas", "muebles", "cotas", "cambios"}
+    {"etiquetas", "puertas", "ventanas", "muebles", "medidas", "cotas", "cambios"}
 )
 
 FONDO = "#0F2740"
@@ -17,6 +18,7 @@ VENTANA = "#7DD3FC"
 MUEBLE = "#9CC9EA"
 TEXTO = "#E6F1FF"
 TEXTO_SUAVE = "#8FB3D1"
+MEDIDA = "#FDE68A"
 COLOR_POR_DEFECTO = "#7DD3FC"
 
 # Prefijo del nombre normalizado (sin tildes) -> color de la habitación.
@@ -142,7 +144,8 @@ def generar_svg_plano(
     """SVG del plano de un piso (`ResultadoPlano`).
 
     El eje Y se invierte (como en el DXF, el origen queda abajo a la izquierda).
-    `capas` admite: etiquetas, puertas, ventanas, muebles, cotas, cambios.
+    `capas` admite: etiquetas, puertas, ventanas, muebles, medidas (ancho y
+    largo de cada ambiente), cotas (de todo el plano) y cambios.
     Con `ocupar_contenedor` el SVG llena su contenedor (p. ej. un iframe de
     alto fijo) en lugar de calcular su alto por proporción.
     Con `enfocar` solo se muestra la vivienda (y las cotas miden la vivienda).
@@ -281,6 +284,38 @@ def generar_svg_plano(
     if "ventanas" in capas:
         for v in (resultado.ventanas or {}).get("ventanas", []):
             s.append(abertura(v, VENTANA, "ventana", doble=True))
+
+    if "medidas" in capas:
+        for a in resultado.distribucion:
+            medidas = medidas_de_ambiente(
+                a["x"], a["y"], a["x"] + a["ancho"], a["y"] + a["largo"]
+            )
+            tamano = max(0.2, min(0.28, min(a["ancho"], a["largo"]) / 11))
+            halo = f'paint-order="stroke" stroke="{FONDO}" stroke-width="0.09"'
+            s.append('<g class="medida">')
+            for eje, m in medidas.items():
+                (x1, y1), (x2, y2) = m["inicio"], m["fin"]
+                # Remates perpendiculares en los dos extremos.
+                dx, dy = (0, 0.1) if eje == "ancho" else (0.1, 0)
+                trazos = [((x1, y1), (x2, y2))] + [
+                    ((x - dx, y - dy), (x + dx, y + dy))
+                    for x, y in (m["inicio"], m["fin"])
+                ]
+                d = " ".join(f"M{punto(*p)} L{punto(*q)}" for p, q in trazos)
+                # El borde oscuro hace visibles los remates sobre los muros.
+                for color, grosor in ((FONDO, 0.07), (MEDIDA, 0.022)):
+                    s.append(
+                        f'<path d="{d}" fill="none" stroke="{color}" '
+                        f'stroke-width="{grosor}" stroke-linecap="round"/>'
+                    )
+                tx, ty = px(m["texto"][0]), py(m["texto"][1])
+                giro = "" if eje == "ancho" else f' transform="rotate(-90 {_n(tx)} {_n(ty)})"'
+                s.append(
+                    f'<text x="{_n(tx)}" y="{_n(ty + tamano * 0.35)}" '
+                    f'text-anchor="middle" font-size="{_n(tamano)}" fill="{MEDIDA}" '
+                    f'{halo}{giro}>{m["valor"]:.2f} m</text>'
+                )
+            s.append("</g>")
 
     if "etiquetas" in capas:
         for a in resultado.distribucion:

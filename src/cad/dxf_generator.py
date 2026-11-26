@@ -5,12 +5,15 @@ from ezdxf.enums import TextEntityAlignment
 from shapely.affinity import translate as shapely_translate
 from shapely.geometry import box as shapely_box
 from shapely.geometry import (
+    LineString,
     Polygon,
     MultiPolygon,
     GeometryCollection
 )
+from shapely.ops import unary_union
 
 from src.cad.dxf_base import APP_ID, UNIDADES_METROS, registrar_metadatos
+from src.geometry.medidas import medidas_de_ambiente
 from src.utils.texto import normalizar_nombre as _normalizar_nombre
 from src.cad.dxf_aberturas import dibujar_puerta, dibujar_ventana
 from src.cad.dxf_mobiliario import (
@@ -25,6 +28,10 @@ from src.cad.dxf_mobiliario import (
 # ==========================================
 # CONFIGURACIÓN GRÁFICA
 # ==========================================
+
+CAPA_MEDIDAS = "MEDIDAS"
+ESTILO_MEDIDAS = "MEDIDAS"
+ALTURA_TEXTO_MEDIDA = 0.13
 
 def crear_capas(doc):
     """
@@ -63,6 +70,10 @@ def crear_capas(doc):
         "MOBILIARIO": {
             "color": 6,
             "lineweight": 18,
+        },
+        CAPA_MEDIDAS: {
+            "color": 3,
+            "lineweight": 13,
         },
     }
 
@@ -231,6 +242,64 @@ def dibujar_cotas(msp, ancho, largo, y_offset=0):
         (x_cota + 0.08, y_offset + largo / 2),
         align=TextEntityAlignment.BOTTOM_CENTER,
     )
+
+
+# ==========================================
+# MEDIDAS DE CADA AMBIENTE
+# ==========================================
+
+def _estilo_de_medidas(doc):
+    """Estilo de cota en metros, con remates arquitectónicos."""
+    if ESTILO_MEDIDAS in doc.dimstyles:
+        return
+    doc.dimstyles.new(ESTILO_MEDIDAS, dxfattribs={
+        "dimtxt": ALTURA_TEXTO_MEDIDA,
+        "dimtsz": 0.06,      # remate oblicuo en lugar de flecha
+        "dimasz": 0.06,
+        "dimgap": 0.03,
+        "dimexo": 0.0,
+        "dimexe": 0.0,
+        "dimse1": 1,         # sin líneas de referencia: van dentro del ambiente
+        "dimse2": 1,
+        "dimdec": 2,
+        "dimzin": 0,
+        "dimdsep": ord("."),
+        "dimlfac": 1.0,
+        "dimscale": 1.0,
+        "dimtad": 1,
+        "dimtih": 0,
+        "dimtoh": 0,
+        "dimpost": "<> m",
+    })
+
+
+def _cajas_de_medidas(poligono):
+    """Zona que ocupan las rectas y sus textos, para no poner el nombre encima."""
+    ancho = 2 * ALTURA_TEXTO_MEDIDA
+    return unary_union([
+        LineString([m["inicio"], m["fin"]]).buffer(ancho, cap_style=2)
+        for m in medidas_de_ambiente(*poligono.bounds).values()
+    ])
+
+
+def dibujar_medidas(msp, poligono):
+    """Cotas de ancho y largo (entidades DIMENSION) dentro del ambiente."""
+    _estilo_de_medidas(msp.doc)
+    x0, y0, x1, y1 = poligono.bounds
+    medidas = medidas_de_ambiente(x0, y0, x1, y1)
+    for eje, angulo, p1, p2 in (
+        ("ancho", 0, (x0, y1), (x1, y1)),
+        ("largo", 90, (x0, y0), (x0, y1)),
+    ):
+        medida = medidas[eje]
+        cota = msp.add_linear_dim(
+            base=medida["inicio"], p1=p1, p2=p2, angle=angulo,
+            dimstyle=ESTILO_MEDIDAS, dxfattribs={"layer": CAPA_MEDIDAS},
+        )
+        if eje == "largo":
+            tx, ty = medida["texto"]
+            cota.set_location((tx - ALTURA_TEXTO_MEDIDA * 0.8, ty))
+        cota.render()
 
 
 # ==========================================
@@ -424,6 +493,11 @@ def dibujar_etiqueta_ambiente(
 
     if zona_segura.is_empty:
         zona_segura = poligono
+
+    sin_medidas = zona_segura.difference(_cajas_de_medidas(poligono))
+
+    if not sin_medidas.is_empty:
+        zona_segura = sin_medidas
 
     # --------------------------------------
     # OBTENER OBSTÁCULOS
@@ -724,6 +798,8 @@ def generar_dxf_desde_geometrias(
         if _normalizar_nombre(ambiente["nombre"]).startswith("escalera"):
             dibujar_escalera(msp, poligono)
 
+        dibujar_medidas(msp, poligono)
+
     # --------------------------------------
     # MUROS
     # --------------------------------------
@@ -855,6 +931,7 @@ def _dibujar_piso(
         dibujar_etiqueta_ambiente(msp, ambiente_shifted, mob_shifted)
         if _normalizar_nombre(ambiente["nombre"]).startswith("escalera"):
             dibujar_escalera(msp, poly_shifted)
+        dibujar_medidas(msp, poly_shifted)
 
     # Muros
     if geometria_muros is not None:

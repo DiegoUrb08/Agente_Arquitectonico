@@ -30,7 +30,9 @@ asistente que crea el archivo `.env` por ti.
    que ya tengas.
 2. **Mira el plano** en pantalla: habitaciones, muros, puertas, ventanas,
    mobiliario y cotas, con capas que puedes activar y desactivar. Puedes ver
-   el terreno completo o ajustar la vista a la vivienda.
+   el terreno completo o ajustar la vista a la vivienda. La capa **Medidas**
+   traza el ancho y el largo de cada ambiente (entre ejes de muro, como las
+   áreas); en el DXF van como cotas en la capa `MEDIDAS`.
    Con **Vista 3D** lo ves como maqueta, con los techos abiertos: arrastra
    para girar la cámara y usa la rueda para acercarte. Activa **Detalle alto**
    para añadir decoración (sillas, veladores, alfombras, TV, plantas…), suelos
@@ -215,7 +217,7 @@ server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
 static/three/           # Copia fija de Three.js 0.160.0 (MIT) para la vista 3D sin internet
-tests/                  # 398 tests pytest
+tests/                  # 404 tests pytest
 ```
 
 ---

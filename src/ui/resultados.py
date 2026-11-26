@@ -20,6 +20,7 @@ CAPAS = {
     "Puertas": "puertas",
     "Ventanas": "ventanas",
     "Muebles": "muebles",
+    "Medidas": "medidas",
     "Cotas": "cotas",
     "Cambios": "cambios",
 }
@@ -128,7 +129,7 @@ def visor_plano(piso, clave: str, cambiados=frozenset(), archivo: str = "plano.s
         if cambiados and "cambios" in capas:
             st.caption("En ámbar: el piso de lo que cambió en esta versión.")
         else:
-            st.caption("Techos abiertos; la capa «Cotas» solo se ve en 2D.")
+            st.caption("Techos abiertos; las capas «Medidas» y «Cotas» solo se ven en 2D.")
         return
 
     por_defecto = VISTA_VIVIENDA if fraccion_ocupada(piso) < 0.5 else VISTA_TERRENO

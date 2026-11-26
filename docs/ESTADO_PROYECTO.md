@@ -325,6 +325,13 @@ Verificación: tests del HTML y prueba en la app con la API simulada (cambio de 
 
 De paso: en `documento_3d` la escena se inserta la última, para que ningún texto suyo pueda contener un marcador que se reemplace después (test incluido).
 
+## Medidas de cada ambiente — ✅ IMPLEMENTADAS (2026-11-26)
+Cada ambiente tiene una recta de ancho (junto a la pared superior) y otra de largo (junto a la izquierda), calculadas en `src/geometry/medidas.py`.
+- Vista 2D: capa «Medidas», activada por defecto; también sale en el SVG descargado.
+- DXF (una o varias plantas): entidades DIMENSION reales, editables en CAD, en la capa `MEDIDAS` con su estilo propio. El nombre del ambiente se coloca fuera de ellas.
+- Se miden **entre ejes de muro**, igual que las áreas y el cuadro de áreas; la luz libre interior es unos 10 a 20 cm menor.
+- No se muestran en la vista 3D ni en el IFC.
+
 ## Acciones pendientes (priorizadas) — revisión 2026-11-24
 
 ### Prioridad alta: antes de publicar en GitHub
