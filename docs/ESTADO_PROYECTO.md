@@ -301,7 +301,8 @@ Medido: 8 programas, todos resueltos en el nivel completo; unos 6–8 s por plan
 
 Limitaciones:
 - No se garantiza ventana en todos los ambientes (se avisa), ni orientación solar.
-- **Ampliar un ambiente por chat se rechaza más** al no quedar huecos: en cuatro planos, ampliar un 20 % se aceptó 4 de 30 veces (10 de 30 sin compactar); reducir, 30 de 30 en ambos. Solución pendiente: que el editor redistribuya los vecinos.
+- **Ampliar un ambiente: resuelto.** Al compactar, ampliar un 20 % pasó a aceptarse solo 4 de 30 veces. Ahora, si no hay hueco, `src/planning/reacomodo.py` vuelve a resolver la planta partiendo de la actual (la altera lo menos posible; los vecinos ceden hasta un 15 %; mantiene las reglas y, si no puede, al menos la conectividad, con aviso). Medido: 30 de 30; en otra prueba de 20 ampliaciones a +20 % y 20 a +50 %, las 40 aceptadas, error de área máximo 1,2 %, 2 reglas incumplidas (ambas a +50 %), unos 6 s (máximo 9 s). 
+- **Reubicar un ambiente: resuelto.** `mover_ambiente` ya no busca solo un hueco libre: `reubicar_ambiente` (mismo módulo) impone la relación pedida (al lado, izquierda, derecha, arriba, abajo, lejos) y reorganiza la planta. Con varios ambientes del mismo nombre, la referencia vale cualquiera y se mueve el más cercano; si la relación ya se cumple, se avisa sin cambiar nada; si hace falta, se relajan primero baño en suite y cocina junto al comedor. Medido: 13 reubicaciones en tres planos, ocupación 99 % (mínimo 97 %), ninguna regla de acceso rota, unos 8 s cada una (hasta unos 24 s si hay que relajar reglas).
 - La compactación deja a veces huecos diminutos entre ambientes (muros dobles).
 - En dos plantas cada una se compacta por separado: la escalera no queda alineada entre pisos (ya ocurría antes).
 - El editor solo avisa si una edición rompe reglas; con terrenos muy ajustados la relajación puede tardar varias decenas de segundos.

@@ -114,6 +114,10 @@ def interpretar_edicion(instruccion: str) -> EditRequest:
     3. Utiliza exclusivamente los tipos de operacion permitidos.
     4. Para modificar un area, utiliza modificar_area.
     5. Para cambiar la ubicacion de un ambiente, utiliza mover_ambiente.
+       "ambiente" es el que se mueve y "referencia" el que sirve de guia.
+       "al lado de", "junto a", "pegado a" o "cerca de" son junto_a; usa
+       una direccion solo si el usuario la dice.
+       Escribe los nombres como el usuario; no agregues numeros que no dijo.
     6. Si faltan datos indispensables, no inventes valores.
     7. Si una instruccion no se puede representar con las operaciones
        disponibles, explica la limitacion en observaciones.

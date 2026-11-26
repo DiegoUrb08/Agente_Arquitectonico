@@ -104,9 +104,23 @@ def test_editar_area_ida_y_vuelta(dxf_base, tmp_path):
     assert sala["poligono"].area == pytest.approx(16.0)
 
 
-def test_editar_rechaza_area_que_invade_otro_ambiente(dxf_base, tmp_path):
-    with pytest.raises(ValueError, match="superpone|limites"):
-        editar_dxf(str(dxf_base), str(tmp_path / "x.dxf"), _solicitud("sala", 60))
+def test_editar_rechaza_area_que_no_cabe_en_el_terreno(dxf_base, tmp_path):
+    with pytest.raises(ValueError, match="reacomodar"):
+        editar_dxf(str(dxf_base), str(tmp_path / "x.dxf"), _solicitud("sala", 95))
+
+
+def test_ampliar_sin_hueco_reacomoda_al_vecino(dxf_base, tmp_path):
+    salida = tmp_path / "editado.dxf"
+    r = editar_dxf(str(dxf_base), str(salida), _solicitud("sala", 60))
+
+    assert r["modificaciones"][0]["area_nueva"] == pytest.approx(60, rel=0.04)
+
+    doc = ezdxf.readfile(str(salida))
+    ambientes = obtener_ambientes(doc.modelspace())
+    sala, cocina = (a["poligono"] for a in ambientes)
+    assert sala.intersection(cocina).area == pytest.approx(0, abs=1e-6)
+    assert sala.boundary.intersection(cocina.boundary).length >= 1.2
+    assert cocina.area >= 12 * 0.85 - 0.05
 
 
 def test_editar_ambiente_inexistente_y_archivo_inexistente(dxf_base, tmp_path):

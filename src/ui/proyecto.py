@@ -25,8 +25,8 @@ RELACIONES = {
 
 AYUDA = (
     "Puedo **cambiar el área** de un ambiente (*«reduce el comedor a 8 m²»*) "
-    "o **moverlo** respecto a otro (*«mueve el dormitorio 2 a la derecha de "
-    "la cocina»*)."
+    "o **reubicarlo** respecto a otro (*«pon la cocina al lado del "
+    "dormitorio»*)."
 )
 
 AVISO_VARIAS_PLANTAS = (
@@ -64,7 +64,15 @@ def resumen_modificaciones(modificaciones: list) -> list[str]:
             )
         else:
             relacion = RELACIONES.get(m["relacion"], m["relacion"])
-            lineas.append(f"{nombre} movido {relacion} {m['referencia']}")
+            referencia = str(m["referencia"]).replace("_", " ")
+            lineas.append(f"{nombre} movido {relacion} {referencia}")
+        if m.get("ajustes"):
+            cedidos = ", ".join(
+                f"{_legible(a['id'])} {a['area_anterior']:.1f} → "
+                f"{a['area_nueva']:.1f} m²"
+                for a in m["ajustes"]
+            )
+            lineas.append(f"Para hacer sitio reacomodé la planta: {cedidos}")
     return lineas
 
 

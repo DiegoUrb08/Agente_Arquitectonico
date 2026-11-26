@@ -70,9 +70,11 @@ def test_el_eje_y_se_invierte_como_en_el_dxf(resultado):
         y_esperada = maxy - (ambiente["y"] + ambiente["largo"])
         assert float(rect.get("y")) == pytest.approx(y_esperada, abs=1e-3)
 
-    inferior = min(resultado.distribucion, key=lambda a: a["y"])
-    superior = max(resultado.distribucion, key=lambda a: a["y"])
-    if inferior is not superior:
+    # Se comparan los bordes superiores: dos ambientes pueden compartirlo.
+    borde = lambda a: round(a["y"] + a["largo"], 3)
+    inferior = min(resultado.distribucion, key=borde)
+    superior = max(resultado.distribucion, key=borde)
+    if borde(inferior) < borde(superior):
         y_de = lambda a: float(rects[resultado.distribucion.index(a)].get("y"))
         assert y_de(inferior) > y_de(superior)
 

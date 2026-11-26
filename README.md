@@ -32,13 +32,16 @@ asistente que crea el archivo `.env` por ti.
    mobiliario y cotas, con capas que puedes activar y desactivar. Puedes ver
    el terreno completo o ajustar la vista a la vivienda.
 3. **Pídele cambios en la conversación**: *«reduce el comedor a 8 m²»* o
-   *«mueve el dormitorio 2 a la derecha de la cocina»*. Cada cambio crea una
+   *«pon la cocina al lado del dormitorio»*. Cada cambio crea una
    versión nueva, resalta en el plano lo que cambió y puedes **deshacerlo**.
 4. **Descarga** el plano en DXF (AutoCAD, LibreCAD...), una imagen en SVG y el
    cuadro de áreas en CSV.
 
 Por ahora los cambios admitidos son cambiar el área de un ambiente y moverlo
-respecto a otro, y solo en planos de una planta.
+respecto a otro, y solo en planos de una planta. Al reubicar, o al ampliar sin
+sitio libre, se reorganiza la planta alterándola lo menos posible (los
+ambientes pueden ceder hasta un 15 % de su superficie) y el chat dice cuáles
+cambiaron. Si dices «el dormitorio» y hay varios, vale cualquiera.
 
 ## Reglas de distribución
 
@@ -201,7 +204,7 @@ src/
 server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
-tests/                  # 330 tests pytest
+tests/                  # 338 tests pytest
 ```
 
 ---

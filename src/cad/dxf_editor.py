@@ -11,11 +11,15 @@ from src.cad.dxf_base import (
     CAPA_TEXTOS,
     UNIDADES_METROS,
 )
+from src.planning.reacomodo import (
+    cumple_relacion,
+    reacomodar_para_area,
+    reubicar_ambiente,
+)
 from src.utils.texto import normalizar_nombre
 
 
 TOLERANCIA = 1e-6
-PASO_BUSQUEDA_M = 0.1
 
 
 # ==========================================
@@ -338,6 +342,10 @@ def modificar_area(
     Cambia el area de una habitacion rectangular conservando su
     proporcion. Se ancla a la esquina (o al centro) que mantiene mas
     pared compartida con los ambientes vecinos.
+
+    Si al ampliar no hay sitio libre, se reacomoda la planta entera
+    (los vecinos ceden algo de superficie o se desplazan) y el resultado
+    incluye `ajustes` con los demas ambientes cuya area cambio.
     """
 
     ambiente = resolver_ambiente(ambientes, nombre)
@@ -378,107 +386,176 @@ def modificar_area(
             candidato
         ))
 
-    if not validos:
+    ajustes = []
+
+    if validos:
+
+        _aplicar_poligono(
+            modelo, ambiente, min(validos, key=lambda v: v[:2])[2]
+        )
+
+    elif area_objetivo > area_actual:
+
+        ajustes = _reacomodar(
+            modelo, ambientes, terreno, ambiente, area_objetivo, primer_error
+        )
+
+    else:
         raise ValueError(primer_error)
 
-    nuevo_poligono = min(validos, key=lambda v: v[:2])[2]
+    resultado = {
+        "ambiente": ambiente["nombre"],
+        "id": ambiente["id"],
+        "area_anterior": round(area_actual, 2),
+        "area_nueva": round(ambiente["poligono"].area, 2)
+    }
 
-    desplazamiento_x = nuevo_poligono.centroid.x - poligono.centroid.x
-    desplazamiento_y = nuevo_poligono.centroid.y - poligono.centroid.y
+    if ajustes:
+        resultado["ajustes"] = ajustes
+
+    return resultado
+
+
+def _aplicar_poligono(modelo, ambiente, nuevo_poligono):
+
+    """
+    Sustituye la geometria de un ambiente y actualiza sus etiquetas.
+    """
+
+    anterior = ambiente["poligono"].centroid
 
     _actualizar_poligono(ambiente, nuevo_poligono)
 
-    _desplazar_textos(modelo, ambiente, desplazamiento_x, desplazamiento_y)
+    _desplazar_textos(
+        modelo,
+        ambiente,
+        nuevo_poligono.centroid.x - anterior.x,
+        nuevo_poligono.centroid.y - anterior.y
+    )
 
     for texto in buscar_textos(modelo, ambiente):
 
         if _es_etiqueta_area(texto):
             texto.dxf.text = f"{nuevo_poligono.area:.2f} m2"
 
-    return {
-        "ambiente": ambiente["nombre"],
-        "id": ambiente["id"],
-        "area_anterior": round(area_actual, 2),
-        "area_nueva": round(nuevo_poligono.area, 2)
-    }
+
+def _reacomodar(
+    modelo, ambientes, terreno, ambiente, area_objetivo, motivo
+):
+
+    """
+    Redistribuye la planta para que `ambiente` alcance el area pedida.
+    Devuelve los cambios de area del resto de ambientes.
+    """
+
+    x0, y0, x1, y1 = terreno.bounds
+
+    nueva = reacomodar_para_area(
+        _distribucion_en_terreno(ambientes, terreno),
+        ambiente["id"], area_objetivo, x1 - x0, y1 - y0
+    )
+
+    if nueva is None:
+        raise ValueError(
+            f"{motivo} Tampoco es posible reacomodar los demas ambientes "
+            "para darle esa superficie: prueba con un area menor."
+        )
+
+    return [
+        ajuste
+        for ajuste in _aplicar_distribucion(modelo, ambientes, terreno, nueva)
+        if ajuste["id"] != ambiente["id"]
+    ]
+
+
+def _distribucion_en_terreno(ambientes, terreno):
+
+    """
+    Distribucion con las coordenadas relativas al origen del terreno.
+    """
+
+    x0, y0, _, _ = terreno.bounds
+
+    distribucion = distribucion_desde_ambientes(ambientes)
+
+    for datos in distribucion:
+        datos["x"] -= x0
+        datos["y"] -= y0
+
+    return distribucion
+
+
+def _aplicar_distribucion(modelo, ambientes, terreno, nueva):
+
+    """
+    Mueve los ambientes del DXF a la nueva distribucion y devuelve los
+    que cambiaron de area (salvo diferencias minimas).
+    """
+
+    x0, y0, _, _ = terreno.bounds
+    por_id = {datos["id"]: datos for datos in nueva}
+    ajustes = []
+
+    for otro in ambientes:
+
+        datos = por_id[otro["id"]]
+        area_anterior = otro["poligono"].area
+        x, y = datos["x"] + x0, datos["y"] + y0
+
+        _aplicar_poligono(
+            modelo, otro,
+            box(x, y, x + datos["ancho"], y + datos["largo"])
+        )
+
+        area_nueva = otro["poligono"].area
+
+        if abs(area_nueva - area_anterior) >= 0.05:
+            ajustes.append({
+                "id": otro["id"],
+                "area_anterior": round(area_anterior, 2),
+                "area_nueva": round(area_nueva, 2)
+            })
+
+    return ajustes
 
 
 # ==========================================
 # 3. MOVER UN AMBIENTE
 # ==========================================
 
-LADOS_POR_RELACION = {
-    "izquierda_de": ("izquierda",),
-    "derecha_de": ("derecha",),
-    "arriba_de": ("arriba",),
-    "abajo_de": ("abajo",),
-    # Contacto en cualquier lado; se elige el mas cercano.
-    "junto_a": ("izquierda", "derecha", "arriba", "abajo"),
-    "cerca_de": ("izquierda", "derecha", "arriba", "abajo"),
+RELACIONES = {
+    "izquierda_de": "a la izquierda de",
+    "derecha_de": "a la derecha de",
+    "arriba_de": "arriba de",
+    "abajo_de": "abajo de",
+    "junto_a": "junto a",
+    "cerca_de": "cerca de",
+    "lejos_de": "lejos de",
 }
 
 
-def _candidatos_junto_a(rect_ref, ancho, alto, lado):
+def _legible(ambiente):
+    return str(ambiente["id"]).replace("_", " ").capitalize()
+
+
+def resolver_referencias(ambientes, referencia):
 
     """
-    Posiciones (xmin, ymin) del ambiente pegado a `rect_ref`
-    por el lado indicado, recorriendo toda la arista compartida.
+    Como `resolver_ambiente`, pero un nombre repetido ("dormitorio")
+    vale por cualquiera de ellos.
     """
 
-    rx0, ry0, rx1, ry1 = rect_ref
+    clave = normalizar_nombre(referencia)
 
-    if lado in ("izquierda", "derecha"):
-
-        x = rx0 - ancho if lado == "izquierda" else rx1
-
-        inicio = ry0 - alto + PASO_BUSQUEDA_M
-        fin = ry1 - PASO_BUSQUEDA_M
-
-        pasos = int((fin - inicio) / PASO_BUSQUEDA_M) + 1
-
-        return [
-            (x, inicio + i * PASO_BUSQUEDA_M)
-            for i in range(max(pasos, 1))
-        ]
-
-    y = ry0 - alto if lado == "abajo" else ry1
-
-    inicio = rx0 - ancho + PASO_BUSQUEDA_M
-    fin = rx1 - PASO_BUSQUEDA_M
-
-    pasos = int((fin - inicio) / PASO_BUSQUEDA_M) + 1
-
-    return [
-        (inicio + i * PASO_BUSQUEDA_M, y)
-        for i in range(max(pasos, 1))
+    por_nombre = [
+        a for a in ambientes
+        if normalizar_nombre(a["nombre"]) == clave
     ]
 
+    if len(por_nombre) > 1:
+        return por_nombre
 
-PASO_LEJOS_M = 0.5
-
-
-def _candidatos_lejos_de(terreno, ancho, alto):
-
-    """
-    Posiciones (esquina inferior izquierda) sobre una malla que cubre
-    el terreno, incluyendo siempre los bordes.
-    """
-
-    xmin, ymin, xmax, ymax = terreno.bounds
-
-    def valores(minimo, maximo, tamano):
-        ultimo = maximo - tamano
-        if ultimo < minimo:
-            return []
-        n = int((ultimo - minimo) / PASO_LEJOS_M)
-        lista = [minimo + i * PASO_LEJOS_M for i in range(n + 1)]
-        if lista[-1] < ultimo - TOLERANCIA:
-            lista.append(ultimo)
-        return lista
-
-    for x0 in valores(xmin, xmax, ancho):
-        for y0 in valores(ymin, ymax, alto):
-            yield x0, y0
+    return [resolver_ambiente(ambientes, referencia)]
 
 
 def mover_ambiente(
@@ -491,99 +568,108 @@ def mover_ambiente(
 ):
 
     """
-    Mueve una habitacion rectangular para que quede pegada a otra
-    (izquierda, derecha, arriba o abajo de ella). Conserva sus
-    dimensiones. Elige la posicion valida mas cercana a la actual
-    que no salga del terreno ni se superponga con otros ambientes.
-    Con 'lejos_de' elige, en cambio, la posicion valida mas alejada de
-    la referencia.
+    Reubica un ambiente respecto a otro (al lado, a la izquierda, derecha,
+    arriba o abajo, o lejos de el). Reorganiza la planta lo menos posible,
+    por lo que otros ambientes pueden desplazarse o ceder algo de area.
     """
 
-    if relacion != "lejos_de" and relacion not in LADOS_POR_RELACION:
+    if relacion not in RELACIONES:
         raise ValueError(f"Relacion espacial desconocida: {relacion}.")
 
-    ambiente = resolver_ambiente(ambientes, nombre)
-    ambiente_ref = resolver_ambiente(ambientes, referencia)
+    candidatos = resolver_referencias(ambientes, nombre)
+    guias = resolver_referencias(ambientes, referencia)
 
-    if ambiente is ambiente_ref:
+    parejas = [(a, g) for a in candidatos for g in guias if a is not g]
+
+    if not parejas:
         raise ValueError(
             "Un ambiente no puede moverse respecto a si mismo."
         )
 
-    xmin, ymin, xmax, ymax = _rectangulo_o_error(ambiente["poligono"])
-    rect_ref = _rectangulo_o_error(ambiente_ref["poligono"])
+    x0, y0, x1, y1 = terreno.bounds
+    distribucion = _distribucion_en_terreno(ambientes, terreno)
+    por_id = {datos["id"]: datos for datos in distribucion}
+    descripcion = RELACIONES[relacion]
 
-    ancho = xmax - xmin
-    alto = ymax - ymin
+    for candidato, guia in parejas:
 
-    centro_actual = ambiente["poligono"].centroid
-
-    mejor = None
-    ultimo_error = None
-
-    if relacion == "lejos_de":
-        candidatos = _candidatos_lejos_de(terreno, ancho, alto)
-    else:
-        candidatos = (
-            posicion
-            for lado in LADOS_POR_RELACION[relacion]
-            for posicion in _candidatos_junto_a(rect_ref, ancho, alto, lado)
-        )
-
-    for x0, y0 in candidatos:
-
-        candidato = box(x0, y0, x0 + ancho, y0 + alto)
-
-        error = _comprobar_ubicacion(
-            candidato, ambiente, ambientes, terreno
-        )
-
-        if error:
-            ultimo_error = error
-            continue
-
-        if relacion == "lejos_de":
-            # Mayor separacion respecto a la referencia; a igualdad,
-            # la posicion mas cercana a la actual.
-            puntuacion = (
-                -round(candidato.distance(ambiente_ref["poligono"]), 3),
-                candidato.centroid.distance(centro_actual),
-            )
-        else:
-            puntuacion = (
-                candidato.centroid.distance(centro_actual),
+        if cumple_relacion(
+            por_id[candidato["id"]], por_id[guia["id"]], relacion
+        ):
+            raise ValueError(
+                f"{_legible(candidato)} ya esta {descripcion} "
+                f"{_legible(guia).lower()}: no hice cambios."
             )
 
-        if mejor is None or puntuacion < mejor[0]:
-            mejor = (puntuacion, candidato)
+    # Si hay varios ambientes con ese nombre, se mueve el mas cercano.
+    ambiente = min(
+        parejas,
+        key=lambda p: p[0]["poligono"].centroid.distance(
+            p[1]["poligono"].centroid
+        )
+    )[0]
+    referencias = [g for g in guias if g is not ambiente]
 
-    if mejor is None:
+    nueva = reubicar_ambiente(
+        distribucion,
+        ambiente["id"],
+        [ref["id"] for ref in referencias],
+        relacion,
+        x1 - x0,
+        y1 - y0
+    )
+
+    if nueva is None:
         raise ValueError(
-            f"No hay espacio libre para colocar "
-            f"{ambiente['nombre']} {relacion.replace('_', ' ')} "
-            f"{ambiente_ref['nombre']}"
-            + (f" ({ultimo_error})" if ultimo_error else ".")
+            f"No es posible colocar {ambiente['nombre']} {descripcion} "
+            f"{referencia} dentro del terreno, ni reorganizando los demas "
+            "ambientes."
         )
 
-    nuevo_poligono = mejor[1]
+    antes = ambiente["poligono"].bounds
+    area_anterior = ambiente["poligono"].area
 
-    desplazamiento_x = nuevo_poligono.bounds[0] - xmin
-    desplazamiento_y = nuevo_poligono.bounds[1] - ymin
+    ajustes = _aplicar_distribucion(modelo, ambientes, terreno, nueva)
 
-    _actualizar_poligono(ambiente, nuevo_poligono)
+    # Entre varias referencias, la que cumple la relacion.
+    finales = {datos["id"]: datos for datos in nueva}
+    elegida = next(
+        (
+            ref for ref in referencias
+            if cumple_relacion(
+                finales[ambiente["id"]], finales[ref["id"]], relacion
+            )
+        ),
+        referencias[0]
+    )
 
-    _desplazar_textos(modelo, ambiente, desplazamiento_x, desplazamiento_y)
+    despues = ambiente["poligono"].bounds
 
-    return {
+    if abs(ambiente["poligono"].area - area_anterior) >= 0.05:
+        ajustes.insert(0, {
+            "id": ambiente["id"],
+            "area_anterior": round(area_anterior, 2),
+            "area_nueva": round(ambiente["poligono"].area, 2)
+        })
+
+    # El numero solo hace falta si el nombre de la referencia se repite.
+    repetida = sum(a["nombre"] == elegida["nombre"] for a in ambientes) > 1
+
+    resultado = {
         "ambiente": ambiente["nombre"],
         "id": ambiente["id"],
-        "referencia": ambiente_ref["nombre"],
+        "referencia": elegida["id"] if repetida else elegida["nombre"],
         "relacion": relacion,
         "desplazamiento": (
-            round(desplazamiento_x, 2),
-            round(desplazamiento_y, 2),
+            round(despues[0] - antes[0], 2),
+            round(despues[1] - antes[1], 2),
         ),
     }
+
+    if ajustes:
+        resultado["ajustes"] = ajustes
+
+    return resultado
 
 
 # ==========================================

@@ -61,8 +61,8 @@ def test_mover_arriba_de_deja_los_ambientes_pegados(dxf, tmp_path):
     dorm = amb["dormitorio_1"]["poligono"]
     sala = amb["sala_1"]["poligono"]
 
-    assert dorm.bounds[1] == pytest.approx(4.0)             # apoyado sobre la sala
-    assert dorm.area == pytest.approx(12.0)                 # conserva dimensiones
+    assert dorm.bounds[1] == pytest.approx(sala.bounds[3])  # apoyado sobre la sala
+    assert dorm.area == pytest.approx(12.0, rel=0.16)       # casi la misma superficie
     assert dorm.intersection(sala).area == pytest.approx(0)
     assert dorm.intersection(sala.buffer(1e-6)).length > 0.5  # comparten arista
 
@@ -97,10 +97,58 @@ def test_mover_junto_a_elige_posicion_valida_cercana(dxf, tmp_path):
         assert dorm.intersection(amb[otro]["poligono"]).area == pytest.approx(0)
 
 
-def test_mover_sin_espacio_libre(dxf, tmp_path):
-    # A la derecha de la sala está la cocina, y no cabe un dormitorio sobre ella.
-    with pytest.raises(ValueError, match="No hay espacio"):
-        editar_dxf(str(dxf), str(tmp_path / "x.dxf"), _mover("dormitorio 1", "sala", "derecha_de"))
+def test_mover_a_un_lado_ocupado_reorganiza_la_planta(dxf, tmp_path):
+    # A la derecha de la sala está la cocina: tiene que cederle el sitio.
+    salida = tmp_path / "x.dxf"
+    editar_dxf(str(dxf), str(salida), _mover("dormitorio 1", "sala", "derecha_de"))
+
+    amb, _ = _ambientes(salida)
+    dorm, sala = (amb[i]["poligono"] for i in ("dormitorio_1", "sala_1"))
+
+    assert dorm.bounds[0] == pytest.approx(sala.bounds[2])
+    assert dorm.boundary.intersection(sala.boundary).length >= 1.2 - 1e-6
+    for id_a, a in amb.items():
+        for id_b, b in amb.items():
+            if id_a < id_b:
+                assert a["poligono"].intersection(b["poligono"]).area < 1e-6
+
+
+def test_mover_imposible_se_explica(tmp_path):
+    justa = [
+        {"id": "sala_1", "nombre": "Sala", "x": 0, "y": 0, "ancho": 4, "largo": 3},
+        {"id": "cocina_1", "nombre": "Cocina", "x": 0, "y": 3, "ancho": 4, "largo": 3},
+    ]
+    ruta = tmp_path / "justa.dxf"
+    generar_dxf_desde_geometrias(generar_geometrias(justa, 4, 6), 4, 6, str(ruta))
+
+    with pytest.raises(ValueError, match="No es posible colocar"):
+        editar_dxf(str(ruta), str(tmp_path / "x.dxf"), _mover("cocina", "sala", "derecha_de"))
+
+
+def test_mover_a_donde_ya_esta_no_hace_cambios(dxf, tmp_path):
+    with pytest.raises(ValueError, match="Cocina 1 ya esta a la derecha de sala 1"):
+        editar_dxf(str(dxf), str(tmp_path / "x.dxf"), _mover("cocina", "sala", "derecha_de"))
+
+
+def test_al_lado_del_dormitorio_vale_cualquiera_de_ellos(dxf, tmp_path):
+    salida = tmp_path / "x.dxf"
+    r = editar_dxf(str(dxf), str(salida), _mover("cocina", "dormitorio", "junto_a"))
+
+    elegido = r["modificaciones"][0]["referencia"]
+    assert elegido in ("dormitorio_1", "dormitorio_2")  # con número: se repite
+    amb, _ = _ambientes(salida)
+    comun = amb["cocina_1"]["poligono"].boundary.intersection(
+        amb[elegido]["poligono"].boundary
+    )
+    assert comun.length >= 0.8
+
+
+def test_si_hay_varios_se_mueve_el_mas_cercano(dxf, tmp_path):
+    r = editar_dxf(
+        str(dxf), str(tmp_path / "x.dxf"), _mover("dormitorio", "cocina", "arriba_de")
+    )
+
+    assert r["modificaciones"][0]["id"] == "dormitorio_2"
 
 
 def test_mover_errores_de_uso(dxf, tmp_path):
@@ -126,20 +174,30 @@ def test_editar_plano_regenera_muros_y_puertas(dxf, tmp_path):
 
     plano = r["plano"]
     nuevos = {a["id"]: a for a in plano.distribucion}
-    assert nuevos["dormitorio_1"]["y"] == pytest.approx(4.0)
+    techo_sala = nuevos["sala_1"]["y"] + nuevos["sala_1"]["largo"]
+    assert nuevos["dormitorio_1"]["y"] == pytest.approx(techo_sala)
     # Los muros se calcularon sobre la nueva posicion.
     assert plano.muros and plano.puertas["puertas"]
 
     amb, _ = _ambientes(salida)
-    assert amb["dormitorio_1"]["poligono"].bounds[1] == pytest.approx(4.0)
+    assert amb["dormitorio_1"]["poligono"].bounds[1] == pytest.approx(
+        nuevos["dormitorio_1"]["y"]
+    )
 
 
 def test_editar_plano_avisa_si_queda_desconectado(dxf, tmp_path):
     from src.services.pipeline import editar_plano
 
     # Los dormitorios del fixture ya estan aislados de sala/cocina.
-    r = editar_plano(str(dxf), str(tmp_path / "r.dxf"), _mover("cocina", "sala", "derecha_de"))
+    r = editar_plano(str(dxf), str(tmp_path / "r.dxf"), _modificar("cocina", 6))
     assert any("sin pared compartida" in o for o in r["observaciones"])
+
+
+def test_mover_deja_todos_los_ambientes_comunicados(dxf, tmp_path):
+    from src.services.pipeline import editar_plano
+
+    r = editar_plano(str(dxf), str(tmp_path / "r.dxf"), _mover("cocina", "sala", "arriba_de"))
+    assert r["plano"].validacion["distribucion_conectada"] is True
 
 
 def test_editar_plano_rechaza_misma_ruta(dxf):
@@ -194,16 +252,23 @@ def test_editar_plano_tras_reducir_area_sigue_conectado(dxf, tmp_path):
 
 
 def test_lejos_de_aumenta_la_distancia_a_la_referencia(dxf, tmp_path):
+    def separacion(amb):
+        a, b = (amb[i]["poligono"].centroid for i in ("dormitorio_1", "sala_1"))
+        return abs(a.x - b.x) + abs(a.y - b.y)
+
     antes, _ = _ambientes(dxf)
-    d0 = antes["dormitorio_1"]["poligono"].distance(antes["sala_1"]["poligono"])
+    d0 = separacion(antes)
 
     salida = tmp_path / "lejos.dxf"
     r = editar_dxf(str(dxf), str(salida), _mover("dormitorio 1", "sala", "lejos_de"))
 
     despues, _ = _ambientes(salida)
     nueva = despues["dormitorio_1"]["poligono"]
-    assert nueva.distance(despues["sala_1"]["poligono"]) > d0
-    assert nueva.area == pytest.approx(antes["dormitorio_1"]["poligono"].area)
+    assert separacion(despues) >= d0 + 1 - 1e-6
+    assert nueva.distance(despues["sala_1"]["poligono"]) >= 1 - 1e-6
+    assert nueva.area == pytest.approx(
+        antes["dormitorio_1"]["poligono"].area, rel=0.16
+    )
     for id_, a in despues.items():
         if id_ != "dormitorio_1":
             assert nueva.intersection(a["poligono"]).area < 1e-6

@@ -4,6 +4,7 @@ import itertools
 
 import pytest
 
+from src.ai.edit_interpreter import EditOperation, EditRequest
 from src.geometry.adjacency_validator import detectar_adyacencias
 from src.geometry.door_generator import generar_puertas_automaticas
 from src.models.defaults import calcular_areas_predeterminadas
@@ -16,8 +17,13 @@ from src.planning.reglas_acceso import (
     evaluar_reglas,
     puede_dar_acceso,
 )
-from src.services.pipeline import NOTA_PASILLO, construir_plano, generar_plano
-from src.ui.proyecto import observaciones_del_plano
+from src.services.pipeline import (
+    NOTA_PASILLO,
+    construir_plano,
+    editar_plano,
+    generar_plano,
+)
+from src.ui.proyecto import observaciones_del_plano, resumen_modificaciones
 
 
 def _req(ancho=10, largo=20, pisos=1, relaciones=(), **ambientes):
@@ -142,6 +148,17 @@ PLANTA = [
     _amb("bano_1", 3, 4.5, 2, 3),
     _amb("bano_2", 5, 4.5, 1.5, 3),
     _amb("dormitorio_2", 6.5, 4.5, 3, 3),
+]
+
+
+# Rectángulo sin huecos de 8 x 7 m que cumple las reglas.
+PLANTA_COMPACTA = [
+    _amb("sala_1", 0, 0, 5, 3.5),
+    _amb("cocina_1", 5, 0, 3, 3.5),
+    _amb("pasillo_1", 0, 3.5, 8, 1.2),
+    _amb("dormitorio_1", 0, 4.7, 3.5, 2.8),
+    _amb("bano_1", 3.5, 4.7, 2, 2.8),
+    _amb("dormitorio_2", 5.5, 4.7, 2.5, 2.8),
 ]
 
 
@@ -352,3 +369,37 @@ def test_el_chat_informa_el_pasillo_y_los_avisos(tmp_path):
 
     assert NOTA_PASILLO in texto
     assert "⚠️ Bano 1 y Bano 2 comparten pared." in texto
+
+
+# ---------------- Ampliar reacomodando la planta ----------------
+
+def test_ampliar_un_plano_compacto_mantiene_las_reglas(tmp_path):
+    base = tmp_path / "base.dxf"
+    construir_plano(PLANTA_COMPACTA, 12, 12, base)
+    solicitud = EditRequest(operaciones=[EditOperation(
+        tipo="modificar_area", ambiente="dormitorio 1", area_objetivo=14,
+    )])
+
+    r = editar_plano(str(base), str(tmp_path / "e.dxf"), solicitud)
+
+    modificacion = r["modificaciones"][0]
+    assert modificacion["area_nueva"] == pytest.approx(14, rel=0.04)
+    plano = r["plano"]
+    assert [a for a in plano.avisos if "ventana" not in a] == []
+    areas = {a["id"]: a["ancho"] * a["largo"] for a in plano.distribucion}
+    for original in PLANTA_COMPACTA:
+        if original["id"] != "dormitorio_1":
+            area = original["ancho"] * original["largo"]
+            assert areas[original["id"]] >= area * 0.85 - 0.1, original["id"]
+
+
+def test_el_resumen_explica_el_reacomodo():
+    lineas = resumen_modificaciones([{
+        "id": "sala_1", "ambiente": "Sala",
+        "area_anterior": 18, "area_nueva": 22,
+        "ajustes": [{"id": "cocina_1", "area_anterior": 12, "area_nueva": 11}],
+    }])
+
+    assert lineas[1] == (
+        "Para hacer sitio reacomodé la planta: Cocina 1 12.0 → 11.0 m²"
+    )
