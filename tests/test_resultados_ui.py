@@ -158,14 +158,47 @@ def test_los_ejemplos_rellenan_el_cuadro_de_texto(entorno):
     assert at.pills[0].value is None, "debe poder elegirse otra vez el mismo ejemplo"
 
 
+def _control(at, opcion):
+    return next(c for c in at.segmented_control if opcion in c.options)
+
+
 def test_el_visor_ofrece_capas_cambios_y_vista(entorno):
     from src.ui.resultados import VISTA_TERRENO, VISTA_VIVIENDA
 
     at = _con_plano()
 
     capas = next(p for p in at.pills if "Cambios" in p.options)
-    vista = at.segmented_control[0]
+    vista = _control(at, VISTA_TERRENO)
 
     assert "Cambios" in capas.options
     assert vista.options == [VISTA_TERRENO, VISTA_VIVIENDA]
     assert vista.value == VISTA_VIVIENDA, "el plano fijo ocupa ~35 % del terreno"
+
+
+def test_la_vista_3d_se_abre_desde_el_visor(entorno):
+    from src.ui.resultados import MODO_2D, MODO_3D, VISTA_TERRENO
+
+    at = _con_plano()
+    modo = _control(at, MODO_3D)
+    assert modo.value == MODO_2D
+
+    modo.set_value(MODO_3D).run()
+
+    assert not at.exception
+    assert not any(VISTA_TERRENO in c.options for c in at.segmented_control)
+    assert not [b for b in at.get("download_button") if "SVG" in b.proto.label]
+    assert any("Techos abiertos" in c.value for c in at.caption)
+
+
+def test_el_detalle_alto_es_opcional(entorno):
+    from src.ui.resultados import MODO_3D
+
+    at = _con_plano()
+    _control(at, MODO_3D).set_value(MODO_3D).run()
+
+    detalle = next(t for t in at.toggle if t.label == "Detalle alto")
+    assert detalle.value is False
+
+    detalle.set_value(True).run()
+
+    assert not at.exception

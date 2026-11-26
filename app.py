@@ -1,9 +1,14 @@
 """Punto de entrada de Streamlit:  streamlit run app.py"""
 
+import mimetypes
 import os
 from pathlib import Path
 
 import streamlit as st
+
+# En algunos Windows el registro asocia .js a text/plain y el navegador
+# rechazaría los módulos de Three.js servidos desde static/.
+mimetypes.add_type("text/javascript", ".js")
 
 # Cargar variables de ambiente desde .env (si existe)
 try:

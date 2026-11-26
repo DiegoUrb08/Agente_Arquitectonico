@@ -31,6 +31,11 @@ asistente que crea el archivo `.env` por ti.
 2. **Mira el plano** en pantalla: habitaciones, muros, puertas, ventanas,
    mobiliario y cotas, con capas que puedes activar y desactivar. Puedes ver
    el terreno completo o ajustar la vista a la vivienda.
+   Con **Vista 3D** lo ves como maqueta, con los techos abiertos: arrastra
+   para girar la cámara y usa la rueda para acercarte. Activa **Detalle alto**
+   para añadir decoración (sillas, veladores, alfombras, TV, plantas…), suelos
+   de madera y cerámica, marcos, zócalos e iluminación realista; puede ir más
+   lento en equipos modestos. Funciona sin internet.
 3. **Pídele cambios en la conversación**: *«reduce el comedor a 8 m²»* o
    *«pon la cocina al lado del dormitorio»*. Cada cambio crea una
    versión nueva, resalta en el plano lo que cambió y puedes **deshacerlo**.
@@ -204,11 +209,12 @@ src/
 server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
-tests/                  # 338 tests pytest
+static/three/           # Copia fija de Three.js 0.160.0 (MIT) para la vista 3D sin internet
+tests/                  # 381 tests pytest
 ```
 
 ---
 
 ## Licencia
 
-[MIT](LICENSE)
+[MIT](LICENSE). Incluye una copia de [Three.js](https://threejs.org) (MIT, ver `static/three/LICENSE`).

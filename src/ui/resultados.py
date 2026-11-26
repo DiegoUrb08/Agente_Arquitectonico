@@ -4,6 +4,7 @@ from html import escape
 
 import streamlit as st
 
+from src.ui.escena_3d import documento_3d, generar_escena_3d
 from src.ui.proyecto import dimensiones_terreno, pisos_de
 from src.ui.plano_svg import (
     color_de_ambiente,
@@ -24,6 +25,10 @@ CAPAS = {
 
 VISTA_TERRENO = "Terreno completo"
 VISTA_VIVIENDA = "Ajustar a la vivienda"
+
+MODO_2D = "Plano 2D"
+MODO_3D = "Vista 3D"
+ALTURA_3D = 560
 
 
 def etiquetas_de_pisos(cantidad: int) -> list[str]:
@@ -92,9 +97,18 @@ def _mostrar_svg(piso, capas, clave: str, enfocar: bool, cambiados) -> None:
     st.iframe(documento, height=altura)
 
 
+def _mostrar_3d(piso, capas, clave: str, cambiados, detalle: bool) -> None:
+    escena = generar_escena_3d(piso, capas, resaltar=cambiados, detalle=detalle)
+    st.iframe(documento_3d(escena, uid=clave), height=ALTURA_3D)
+
+
 @st.fragment
 def visor_plano(piso, clave: str, cambiados=frozenset(), archivo: str = "plano.svg") -> None:
     """Vista previa con capas conmutables; solo se vuelve a ejecutar este bloque."""
+
+    modo = st.segmented_control(
+        "Modo", [MODO_2D, MODO_3D], default=MODO_2D, key=f"modo_{clave}",
+    )
 
     elegidas = st.pills(
         "Capas",
@@ -104,6 +118,23 @@ def visor_plano(piso, clave: str, cambiados=frozenset(), archivo: str = "plano.s
         key=f"capas_{clave}",
     )
     capas = frozenset(CAPAS[e] for e in (elegidas or []))
+
+    if modo == MODO_3D:
+        detalle = st.toggle(
+            "Detalle alto",
+            key=f"detalle_{clave}",
+            help=(
+                "Más muebles, texturas e iluminación realista; puede ir más "
+                "lento en equipos modestos."
+            ),
+        )
+        st.html(_leyenda_html(piso))
+        _mostrar_3d(piso, capas, clave, cambiados, detalle)
+        if cambiados and "cambios" in capas:
+            st.caption("En ámbar: el piso de lo que cambió en esta versión.")
+        else:
+            st.caption("Techos abiertos; la capa «Cotas» solo se ve en 2D.")
+        return
 
     por_defecto = VISTA_VIVIENDA if fraccion_ocupada(piso) < 0.5 else VISTA_TERRENO
     vista = st.segmented_control(

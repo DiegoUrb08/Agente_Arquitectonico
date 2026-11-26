@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0A1A2F;
+    font-family: "Segoe UI", Inter, system-ui, sans-serif; color: #E6F1FF; }
+  #lienzo { position: absolute; inset: 0; }
+  #botones { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+  button { background: #10263FE6; color: #E6F1FF; border: 1px solid #2A4D72;
+    border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  button:hover { border-color: #38BDF8; color: #38BDF8; }
+  #ayuda { position: absolute; left: 10px; bottom: 8px; font-size: 11px; color: #8FB3D1; }
+  #aviso { position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; padding: 24px; text-align: center; font-size: 14px;
+    color: #8FB3D1; }
+  [hidden] { display: none !important; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "/app/static/three/build/three.module.min.js",
+  "three/addons/": "/app/static/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="lienzo"></div>
+<div id="botones" hidden>
+  <button id="restablecer" type="button">Restablecer vista</button>
+  <button id="superior" type="button">Vista superior</button>
+</div>
+<div id="ayuda" hidden>Arrastra para girar · rueda para acercar · clic derecho para desplazar</div>
+<div id="aviso">Cargando vista 3D…</div>
+<script type="application/json" id="escena">__ESCENA__</script>
+<script type="module">
+const escena = JSON.parse(document.getElementById("escena").textContent);
+const UID = __UID__;
+const aviso = document.getElementById("aviso");
+
+function avisar(texto) {
+  aviso.textContent = texto;
+  aviso.hidden = false;
+}
+
+let THREE, OrbitControls;
+try {
+  THREE = await import("three");
+  ({ OrbitControls } = await import("three/addons/controls/OrbitControls.js"));
+} catch (error) {
+  avisar("No se encontró la copia local de Three.js (carpeta static/three). Arranca la app con «streamlit run app.py» desde la carpeta del proyecto.");
+  throw error;
+}
+
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+} catch (error) {
+  avisar("Tu navegador no admite WebGL, necesario para la vista 3D.");
+  throw error;
+}
+
+const lienzo = document.getElementById("lienzo");
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+lienzo.appendChild(renderer.domElement);
+
+const DETALLE = Boolean(escena.detalle);
+if (DETALLE) {
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.8;
+}
+
+const mundo = new THREE.Scene();
+// En detalle alto el tono de imagen también oscurece el fondo: se compensa
+// para que siga coincidiendo con el de la app (#0A1A2F).
+mundo.background = new THREE.Color(DETALLE ? 0x243146 : 0x0A1A2F);
+
+// ---------- Materiales ----------
+const PROPIEDADES = {
+  muro: { color: 0xF5F7FA, roughness: 0.92 },
+  puerta: { color: 0xC8A27A, roughness: 0.7 },
+  vidrio: { color: 0x9FD8F5, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.35 },
+  madera: { color: 0xC9A27E, roughness: 0.75 },
+  tela: { color: 0x8796A8, roughness: 0.95 },
+  tela_clara: { color: 0xA9B6C4, roughness: 0.95 },
+  colchon: { color: 0xF2EEE6, roughness: 0.9 },
+  blanco: { color: 0xF7F7F5, roughness: 0.4 },
+  oscuro: { color: 0x3A4250, roughness: 0.6 },
+  metal: { color: 0xC5CCD3, roughness: 0.35, metalness: 0.6 },
+  agua: { color: 0x7CC6E8, roughness: 0.1, transparent: true, opacity: 0.7 },
+  marco: { color: 0xEDE6DA, roughness: 0.6 },
+  zocalo: { color: 0xE2DBCF, roughness: 0.7 },
+  cemento: { color: 0xB9BCC0, roughness: 0.95 },
+  alfombra: { color: 0x7E8FA6, roughness: 1 },
+  maceta: { color: 0xB86B45, roughness: 0.8 },
+  planta: { color: 0x4E8B4A, roughness: 0.9 },
+  luz: { color: 0xFFF1D6, emissive: 0xFFD9A0, emissiveIntensity: 0.6, roughness: 0.8 },
+  espejo: { color: 0xDDE6EE, roughness: 0.03, metalness: 1 },
+  pantalla: { color: 0x14181F, roughness: 0.15, metalness: 0.3 },
+  madera_oscura: { color: 0x6B4E3A, roughness: 0.6 },
+  toalla: { color: 0xE8EEF3, roughness: 1 },
+};
+
+// Texturas generadas por código (sin imágenes externas); 1 repetición = 1 m.
+function lienzoTextura(lado, dibujar) {
+  const c = document.createElement("canvas");
+  c.width = c.height = lado;
+  dibujar(c.getContext("2d"), lado);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+
+function ruido(g, lado, cantidad, colores, tamano) {
+  for (let i = 0; i < cantidad; i++) {
+    g.fillStyle = colores[i % colores.length];
+    g.fillRect(Math.random() * lado, Math.random() * lado, tamano, tamano);
+  }
+}
+
+const GENERADORES = {
+  madera: (g, n) => {
+    const tablas = 6, alto = n / tablas;
+    const tonos = ["#C89B6D", "#BE8F60", "#D2A877", "#C29466", "#B98A5C", "#CDA172"];
+    for (let i = 0; i < tablas; i++) {
+      g.fillStyle = tonos[i];
+      g.fillRect(0, i * alto, n, alto);
+      g.strokeStyle = "rgba(90, 60, 35, 0.18)";
+      for (let k = 0; k < 7; k++) {
+        const y = i * alto + Math.random() * alto;
+        g.beginPath();
+        g.moveTo(0, y);
+        g.bezierCurveTo(n * 0.3, y + 3, n * 0.6, y - 3, n, y + 1);
+        g.stroke();
+      }
+      g.fillStyle = "rgba(70, 45, 25, 0.55)";
+      g.fillRect(0, i * alto, n, 2);
+      g.fillRect(((i * 0.37) % 1) * n, i * alto, 2, alto);
+    }
+  },
+  veta: (g, n) => {
+    g.fillStyle = "#FFFFFF";
+    g.fillRect(0, 0, n, n);
+    g.strokeStyle = "rgba(100, 70, 40, 0.22)";
+    for (let k = 0; k < 40; k++) {
+      const y = Math.random() * n;
+      g.beginPath();
+      g.moveTo(0, y);
+      g.bezierCurveTo(n * 0.3, y + 4, n * 0.7, y - 4, n, y);
+      g.stroke();
+    }
+  },
+  ceramica: (g, n) => {
+    g.fillStyle = "#C9CDD2";
+    g.fillRect(0, 0, n, n);
+    const piezas = 2, lado = n / piezas;
+    for (let i = 0; i < piezas; i++) {
+      for (let j = 0; j < piezas; j++) {
+        const tono = 232 + Math.floor(Math.random() * 14);
+        g.fillStyle = "rgb(" + tono + "," + tono + "," + (tono - 4) + ")";
+        g.fillRect(i * lado + 3, j * lado + 3, lado - 6, lado - 6);
+      }
+    }
+  },
+  cemento: (g, n) => {
+    g.fillStyle = "#FFFFFF";
+    g.fillRect(0, 0, n, n);
+    ruido(g, n, 9000, ["rgba(0,0,0,0.06)", "rgba(255,255,255,0.08)"], 2);
+  },
+  cesped: (g, n) => {
+    g.fillStyle = "#4F7F3F";
+    g.fillRect(0, 0, n, n);
+    ruido(g, n, 16000, ["#5E9149", "#456F36", "#6BA052", "#3E6430"], 2);
+  },
+  tela: (g, n) => {
+    g.fillStyle = "#FFFFFF";
+    g.fillRect(0, 0, n, n);
+    g.fillStyle = "rgba(0,0,0,0.07)";
+    for (let i = 0; i < n; i += 4) {
+      g.fillRect(i, 0, 1, n);
+      g.fillRect(0, i, n, 1);
+    }
+  },
+};
+const texturas = {};
+function textura(nombre) {
+  if (!texturas[nombre]) texturas[nombre] = lienzoTextura(512, GENERADORES[nombre]);
+  return texturas[nombre];
+}
+
+// En detalle alto, estos materiales llevan textura (que se tiñe con su color).
+const CON_TEXTURA = {
+  madera: "veta", madera_oscura: "veta", puerta: "veta",
+  tela: "tela", tela_clara: "tela", alfombra: "tela", cemento: "cemento",
+};
+
+const materiales = {};
+function material(nombre) {
+  if (!materiales[nombre]) {
+    const propiedades = { ...(PROPIEDADES[nombre] || PROPIEDADES.madera) };
+    if (DETALLE && CON_TEXTURA[nombre]) propiedades.map = textura(CON_TEXTURA[nombre]);
+    if (DETALLE) propiedades.envMapIntensity = 0.5;
+    materiales[nombre] = new THREE.MeshStandardMaterial(propiedades);
+  }
+  return materiales[nombre];
+}
+
+function materialDePiso(p) {
+  if (!DETALLE || !p.acabado) {
+    return new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.85 });
+  }
+  const resaltado = p.color.toUpperCase() === "#FBBF24";
+  return new THREE.MeshStandardMaterial({
+    color: resaltado ? 0xFBBF24 : (p.acabado === "cemento" ? 0xB9BCC0 : 0xFFFFFF),
+    map: textura(p.acabado),
+    roughness: p.acabado === "ceramica" ? 0.35 : 0.7,
+    envMapIntensity: 0.5,
+  });
+}
+
+// ---------- Geometría (plano x, y -> mundo x, -z; altura -> y) ----------
+function prisma(anillos, h0, h1, mat) {
+  const punto = ([x, y]) => new THREE.Vector2(x, y);
+  const forma = new THREE.Shape(anillos[0].map(punto));
+  for (const agujero of anillos.slice(1)) {
+    forma.holes.push(new THREE.Path(agujero.map(punto)));
+  }
+  const geometria = new THREE.ExtrudeGeometry(forma, { depth: h1 - h0, bevelEnabled: false });
+  geometria.rotateX(-Math.PI / 2);
+  geometria.translate(0, h0, 0);
+  const malla = new THREE.Mesh(geometria, mat);
+  malla.castShadow = true;
+  malla.receiveShadow = true;
+  return malla;
+}
+
+const CAJA = new THREE.BoxGeometry(1, 1, 1);
+const CILINDRO = new THREE.CylinderGeometry(0.5, 0.5, 1, 28);
+const ESFERA = new THREE.SphereGeometry(0.5, 24, 16);
+const FORMAS = { cilindro: CILINDRO, esfera: ESFERA };
+function pieza(p) {
+  const mat = material(p.material);
+  const malla = new THREE.Mesh(FORMAS[p.forma] || CAJA, mat);
+  malla.scale.set(p.x1 - p.x0, p.h1 - p.h0, p.y1 - p.y0);
+  malla.position.set((p.x0 + p.x1) / 2, (p.h0 + p.h1) / 2, -(p.y0 + p.y1) / 2);
+  malla.castShadow = !mat.transparent;
+  malla.receiveShadow = true;
+  return malla;
+}
+
+const [vx0, vy0, vx1, vy1] = escena.vivienda;
+const [tx0, ty0, tx1, ty1] = escena.terreno;
+const tamano = Math.max(vx1 - vx0, vy1 - vy0, 4);
+const centro = new THREE.Vector3((vx0 + vx1) / 2, 0.8, -(vy0 + vy1) / 2);
+const radio = 0.5 * Math.hypot(vx1 - vx0, vy1 - vy0, escena.altura_muro);
+
+function rotulo(r) {
+  const lienzoTexto = document.createElement("canvas");
+  lienzoTexto.width = 512;
+  lienzoTexto.height = 168;
+  const g = lienzoTexto.getContext("2d");
+  g.fillStyle = "rgba(10, 26, 47, 0.78)";
+  g.beginPath();
+  g.roundRect(6, 6, 500, 156, 40);
+  g.fill();
+  g.fillStyle = r.color;
+  g.fillRect(36, 60, 14, 48);
+  g.textBaseline = "middle";
+  g.fillStyle = "#E6F1FF";
+  g.font = "600 58px Segoe UI, Inter, sans-serif";
+  g.fillText(r.texto, 70, 66, 420);
+  g.fillStyle = "#8FB3D1";
+  g.font = "44px Segoe UI, Inter, sans-serif";
+  g.fillText(r.detalle, 70, 122, 420);
+  const textura = new THREE.CanvasTexture(lienzoTexto);
+  textura.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: textura, depthTest: false, transparent: true, toneMapped: false,
+    })
+  );
+  const escala = Math.max(0.55, tamano * 0.045);
+  sprite.scale.set(escala * 3.05, escala, 1);
+  sprite.position.set(r.x, escena.altura_muro + 0.45, -r.y);
+  sprite.renderOrder = 10;
+  return sprite;
+}
+
+// ---------- Terreno ----------
+let materialTerreno = new THREE.MeshStandardMaterial({ color: 0x16304D, roughness: 1 });
+if (DETALLE && escena.terreno_acabado) {
+  const cesped = textura(escena.terreno_acabado).clone();
+  cesped.repeat.set((tx1 - tx0) / 2, (ty1 - ty0) / 2);
+  cesped.needsUpdate = true;
+  materialTerreno = new THREE.MeshStandardMaterial({ map: cesped, roughness: 1 });
+}
+const terreno = new THREE.Mesh(new THREE.PlaneGeometry(tx1 - tx0, ty1 - ty0), materialTerreno);
+terreno.rotation.x = -Math.PI / 2;
+terreno.position.set((tx0 + tx1) / 2, -0.005, -(ty0 + ty1) / 2);
+terreno.receiveShadow = true;
+mundo.add(terreno);
+
+const borde = new THREE.LineLoop(
+  new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(tx0, 0.002, -ty0), new THREE.Vector3(tx1, 0.002, -ty0),
+    new THREE.Vector3(tx1, 0.002, -ty1), new THREE.Vector3(tx0, 0.002, -ty1),
+  ]),
+  new THREE.LineBasicMaterial({ color: 0x5B86AB })
+);
+mundo.add(borde);
+
+const lado = Math.ceil(Math.max(tx1 - tx0, ty1 - ty0));
+const rejilla = new THREE.GridHelper(lado, lado, 0x24496E, 0x1B3A5C);
+rejilla.position.set(tx0 + lado / 2, 0.001, -(ty0 + lado / 2));
+if (!DETALLE) mundo.add(rejilla);
+
+// ---------- Vivienda ----------
+for (const p of escena.pisos) mundo.add(prisma(p.anillos, p.h0, p.h1, materialDePiso(p)));
+for (const m of escena.muros) mundo.add(prisma(m.anillos, m.h0, m.h1, material(m.material)));
+for (const m of escena.prismas || []) mundo.add(prisma(m.anillos, m.h0, m.h1, material(m.material)));
+for (const p of escena.piezas) mundo.add(pieza(p));
+const etiquetas = new THREE.Scene();
+for (const r of escena.rotulos) etiquetas.add(rotulo(r));
+
+// ---------- Luces ----------
+mundo.add(new THREE.HemisphereLight(0xFFFFFF, 0x3B4F66, DETALLE ? 0.45 : 1.7));
+const sol = new THREE.DirectionalLight(0xFFF4E5, DETALLE ? 1.7 : 1.8);
+sol.position.set(centro.x - tamano * 0.6, tamano * 1.4, centro.z + tamano * 0.9);
+sol.target.position.copy(centro);
+sol.castShadow = true;
+sol.shadow.mapSize.set(DETALLE ? 4096 : 2048, DETALLE ? 4096 : 2048);
+sol.shadow.camera.left = -tamano;
+sol.shadow.camera.right = tamano;
+sol.shadow.camera.top = tamano;
+sol.shadow.camera.bottom = -tamano;
+sol.shadow.camera.far = tamano * 5;
+sol.shadow.bias = -0.0005;
+sol.shadow.radius = 4;
+mundo.add(sol, sol.target);
+
+// ---------- Cámara ----------
+// Alcance acotado: la oclusión ambiental mide distancias relativas a él.
+const camara = new THREE.PerspectiveCamera(
+  40, window.innerWidth / window.innerHeight, 0.1, Math.max(60, radio * 14)
+);
+const controles = new OrbitControls(camara, renderer.domElement);
+controles.enableDamping = true;
+controles.dampingFactor = 0.08;
+controles.maxPolarAngle = Math.PI / 2 - 0.05;
+controles.minDistance = 2;
+controles.maxDistance = Math.max(tamano * 5, radio * 6);
+
+const DIRECCIONES = {
+  inicial: new THREE.Vector3(-0.6, 1.3, 1.0).normalize(),
+  superior: new THREE.Vector3(0, 1, 0.0005).normalize(),
+};
+const CLAVE = "vista3d-" + UID;
+
+// Distancia a la que la vivienda entera cabe en el visor, sea ancho o estrecho.
+function distancia() {
+  const vertical = THREE.MathUtils.degToRad(camara.fov);
+  const horizontal = 2 * Math.atan(Math.tan(vertical / 2) * camara.aspect);
+  return 1.08 * radio / Math.sin(Math.min(vertical, horizontal) / 2);
+}
+
+function vista(nombre) {
+  camara.position.copy(DIRECCIONES[nombre]).multiplyScalar(distancia()).add(centro);
+  controles.target.copy(centro);
+  controles.update();
+}
+
+function guardar() {
+  try {
+    sessionStorage.setItem(CLAVE, JSON.stringify({
+      p: camara.position.toArray(), t: controles.target.toArray(),
+    }));
+  } catch (error) { /* sin almacenamiento: no se recuerda la cámara */ }
+}
+
+function restaurar() {
+  try {
+    const datos = JSON.parse(sessionStorage.getItem(CLAVE) || "null");
+    if (datos) {
+      camara.position.fromArray(datos.p);
+      controles.target.fromArray(datos.t);
+      controles.update();
+      return true;
+    }
+  } catch (error) { /* se usa la vista inicial */ }
+  return false;
+}
+
+if (!restaurar()) vista("inicial");
+controles.addEventListener("end", guardar);
+
+document.getElementById("restablecer").onclick = () => { vista("inicial"); guardar(); };
+document.getElementById("superior").onclick = () => { vista("superior"); guardar(); };
+window.vista = vista;
+
+// Detalle alto: reflejos del entorno y oclusión ambiental. Si algo falla,
+// se dibuja igualmente sin esos efectos.
+let compositor = null;
+if (DETALLE) {
+  try {
+    const { RoomEnvironment } = await import("three/addons/environments/RoomEnvironment.js");
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    mundo.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  } catch (error) { console.warn("Sin reflejos del entorno", error); }
+  try {
+    const { EffectComposer } = await import("three/addons/postprocessing/EffectComposer.js");
+    const { RenderPass } = await import("three/addons/postprocessing/RenderPass.js");
+    const { SSAOPass } = await import("three/addons/postprocessing/SSAOPass.js");
+    const { OutputPass } = await import("three/addons/postprocessing/OutputPass.js");
+    compositor = new EffectComposer(renderer);
+    compositor.addPass(new RenderPass(mundo, camara));
+    const ssao = new SSAOPass(mundo, camara, window.innerWidth, window.innerHeight);
+    ssao.kernelRadius = 0.45;
+    ssao.minDistance = 0.01 / camara.far;
+    ssao.maxDistance = 0.5 / camara.far;
+    compositor.addPass(ssao);
+    compositor.addPass(new OutputPass());
+  } catch (error) {
+    compositor = null;
+    console.warn("Sin oclusión ambiental", error);
+  }
+}
+
+window.addEventListener("resize", () => {
+  camara.aspect = window.innerWidth / window.innerHeight;
+  camara.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  if (compositor) compositor.setSize(window.innerWidth, window.innerHeight);
+});
+
+aviso.hidden = true;
+document.getElementById("botones").hidden = false;
+document.getElementById("ayuda").hidden = false;
+
+renderer.setAnimationLoop(() => {
+  controles.update();
+  if (compositor) compositor.render();
+  else renderer.render(mundo, camara);
+  renderer.autoClear = false;
+  renderer.clearDepth();
+  renderer.render(etiquetas, camara);
+  renderer.autoClear = true;
+  window.listo = true;
+});
+</script>
+</body>
+</html>

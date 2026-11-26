@@ -307,8 +307,16 @@ Limitaciones:
 - En dos plantas cada una se compacta por separado: la escalera no queda alineada entre pisos (ya ocurría antes).
 - El editor solo avisa si una edición rompe reglas; con terrenos muy ajustados la relajación puede tardar varias decenas de segundos.
 
-### 2. Vista 3D del plano
-Un apartado con un renderizado 3D del plano, con los techos abiertos. No tiene que ser simple: debe notarse que es 3D, la cámara debe poder girar y los muebles, puertas y paredes deben verse bien delimitados.
+### 2. Vista 3D del plano — ✅ IMPLEMENTADA (2026-11-25)
+Selector «Plano 2D / Vista 3D» en la pestaña Plano; las capas (etiquetas, puertas, ventanas, muebles, cambios) valen para ambas.
+- `src/ui/escena_3d.py` (función pura): calcula toda la escena en Python a partir de `ResultadoPlano`. Muros de 2,60 m con los huecos reales (`muros_con_aberturas`), antepecho, dintel y vidrio en ventanas (alta en baños), dintel y hoja abierta a 90° hacia el ambiente de destino en puertas, pisos con el color del 2D (ámbar si cambiaron) y muebles por piezas (cama con cabecero y almohadas, sofá, mesa con patas, armario, cocina con hornillas, ducha con mampara…) orientados según la pared que tienen detrás.
+- `src/ui/visor_3d.html`: solo dibuja con Three.js 0.160.0; cámara orbital que encuadra la vivienda según el ancho del visor, botones «Restablecer vista» y «Vista superior», recuerda la cámara al cambiar de capa o de modo. Sin WebGL muestra un aviso.
+- **Sin internet:** copia fija de Three.js en `static/three/` (780 KB, MIT; solo los módulos usados), servida por Streamlit (`server.enableStaticServing`) en `/app/static/three/`. `app.py` registra `.js` como `text/javascript` porque algunos Windows lo asocian a `text/plain` en el registro. Verificado en la app con la red externa bloqueada.
+- **Detalle alto (opcional, interruptor en el visor):** `src/ui/detalle_3d.py` añade decoración solo en 3D: sillas alrededor de la mesa, veladores con lámpara, alfombras, mesa de centro, mueble de TV, planta y lámpara de pie, mesada y muebles altos de cocina, espejo y toallero. Cada pieza se descarta si choca con un mueble, una puerta o una ventana. También añade marcos de puertas y ventanas con travesaño, manijas, zócalos cortados en los vanos, escalón y vereda de entrada, y acabados (madera, cerámica, cemento, césped) con texturas generadas en canvas, reflejos (`RoomEnvironment`) y oclusión ambiental (`SSAOPass`). Corregido de paso: la espalda de sofás y armarios se toma del lado largo y la de las camas del corto.
+- Seguridad: el JSON se incrusta escapando `<`, `>` y `&`; los textos se dibujan en canvas.
+- Verificado: 381 tests y capturas reales con WebGL por software, en modo normal y detallado, de varios planos y de la app editada, con la red externa bloqueada.
+
+Limitaciones: una planta a la vez (sin apilar); sin techos ni exportación; muebles y decoración son volúmenes simples. La decoración solo aparece donde cabe: en planos compactos (camas en esquina, puertas frente al sofá) puede faltar el velador o el TV. El mobiliario del plano a veces no incluye el sofá de la sala (ya ocurría antes).
 
 ### 3. Modo pantalla completa
 Poder ver el plano (y, cuando exista, la vista 3D) a pantalla completa.
