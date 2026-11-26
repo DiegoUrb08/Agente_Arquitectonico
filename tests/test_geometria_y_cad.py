@@ -38,8 +38,10 @@ def test_ambiente_aislado_rompe_conectividad(distribucion_simple):
 
 def test_puerta_automatica_en_pared_compartida(distribucion_simple):
     r = generar_puertas_automaticas(distribucion_simple)
-    assert r["cantidad_puertas"] == 1
-    assert r["puertas"][0]["centro"] == (5.0, 2.0)
+    interior, exterior = r["puertas"]
+    assert interior["centro"] == (5.0, 2.0)
+    assert exterior["ambiente_b"] == "exterior"
+    assert exterior["centro"] == (2.5, 0.0), "en el frente de la sala"
 
 
 def test_pipeline_completo_genera_dxf_legible(distribucion_simple, tmp_path):
@@ -48,7 +50,7 @@ def test_pipeline_completo_genera_dxf_legible(distribucion_simple, tmp_path):
     assert muros["area_muros_m2"] > 0
     puertas = generar_puertas_automaticas(distribucion_simple)["puertas"]
     aberturas = generar_aberturas(muros, puertas)
-    assert aberturas["cantidad_puertas"] == 1
+    assert aberturas["cantidad_puertas"] == 2
 
     ruta = tmp_path / "plano.dxf"
     generar_dxf_desde_geometrias(

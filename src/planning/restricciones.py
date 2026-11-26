@@ -13,7 +13,8 @@ def agregar_adyacencia_fisica(
     ambiente_b,
     identificador,
     ancho_terreno_dm,
-    largo_terreno_dm
+    largo_terreno_dm,
+    minimo=LONGITUD_MINIMA_ADYACENCIA_DM
 ):
     """
     Obliga a dos ambientes rectangulares a compartir
@@ -29,8 +30,6 @@ def agregar_adyacencia_fisica(
     Retorna una variable booleana que indica
     si ambos ambientes son adyacentes.
     """
-
-    minimo = LONGITUD_MINIMA_ADYACENCIA_DM
 
     # --------------------------------------------------------
     # VARIABLES DE POSICIÓN Y DIMENSIONES
@@ -214,3 +213,25 @@ def agregar_adyacencia_fisica(
     ).OnlyEnforceIf(adyacente.Not())
 
     return adyacente
+
+
+def agregar_separacion(modelo, ambiente_a, ambiente_b, identificador, hueco_dm):
+    """
+    Impide que dos ambientes se toquen: deben distar `hueco_dm` en algún eje.
+
+    Hace falta porque `adyacente == 0` no prohíbe compartir pared.
+    """
+
+    opciones = []
+
+    for eje, fin in (("x", "fin_x"), ("y", "fin_y")):
+        for orden, (primero, segundo) in enumerate(
+            ((ambiente_a, ambiente_b), (ambiente_b, ambiente_a))
+        ):
+            opcion = modelo.NewBoolVar(f"separado_{eje}{orden}_{identificador}")
+            modelo.Add(
+                primero[fin] + hueco_dm <= segundo[eje]
+            ).OnlyEnforceIf(opcion)
+            opciones.append(opcion)
+
+    modelo.AddBoolOr(opciones)

@@ -5,7 +5,7 @@ requerimientos -> optimización -> validación -> geometrías -> muros
 -> puertas -> aberturas -> DXF.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -19,10 +19,16 @@ from src.geometry.wall_generator import generar_muros
 from src.geometry.window_generator import generar_ventanas_automaticas
 from src.models.distribucion import validar_esquema_distribucion
 from src.planning.layout_optimizer import optimizar_distribucion, optimizar_por_pisos
+from src.planning.reglas_acceso import evaluar_reglas, nombres_legibles, tipo_base
 
 ESPESOR_EXTERIOR_M = 0.20
 ESPESOR_INTERIOR_M = 0.15
 ANCHO_PUERTA_M = 0.90
+
+NOTA_PASILLO = (
+    "Agregué un pasillo para entrar a dormitorios y baños sin cruzar otros "
+    "ambientes."
+)
 
 
 @dataclass
@@ -36,6 +42,8 @@ class ResultadoPlano:
     ruta_dxf: Path
     mobiliario: dict | None = None
     ventanas: dict | None = None
+    avisos: list = field(default_factory=list)  # reglas que no se cumplen
+    notas: list = field(default_factory=list)  # decisiones tomadas por el sistema
 
 
 @dataclass
@@ -75,7 +83,32 @@ def generar_plano(
     avisar("Optimizando la distribución espacial...")
     distribucion = optimizar_distribucion(requerimientos)
 
-    return construir_plano(distribucion, ancho, largo, ruta_dxf, progreso)
+    plano = construir_plano(distribucion, ancho, largo, ruta_dxf, progreso)
+    plano.notas = _notas(requerimientos, distribucion)
+    return plano
+
+
+def _notas(requerimientos, distribucion) -> list[str]:
+    """Lo que el sistema añadió sin que el usuario lo pidiera."""
+    pidio = any(tipo_base(a.nombre) == "pasillo" for a in requerimientos.ambientes)
+    hay = any(tipo_base(a["id"]) == "pasillo" for a in distribucion)
+    return [NOTA_PASILLO] if hay and not pidio else []
+
+
+def _avisos(distribucion, puertas, validacion, ventanas, planta_baja=True) -> list[str]:
+    avisos = evaluar_reglas(
+        distribucion, puertas["puertas"], validacion["adyacencias"], planta_baja
+    )
+    sin_ventana = [
+        i for i in ventanas.get("omitidos", []) if tipo_base(i) != "escalera"
+    ]
+    if sin_ventana:
+        nombres = nombres_legibles(distribucion)
+        avisos.append(
+            "Sin ventana al exterior: "
+            + ", ".join(nombres[i] for i in sin_ventana) + "."
+        )
+    return avisos
 
 
 def construir_plano(
@@ -120,6 +153,7 @@ def construir_plano(
         distribucion=distribucion,
         ancho_puerta_m=ANCHO_PUERTA_M,
         espesor_muro_m=ESPESOR_INTERIOR_M,
+        espesor_exterior_m=ESPESOR_EXTERIOR_M,
     )
 
     avisar("Colocando ventanas en los muros exteriores...")
@@ -165,6 +199,7 @@ def construir_plano(
         ruta_dxf=ruta,
         mobiliario=mobiliario,
         ventanas=ventanas,
+        avisos=_avisos(distribucion, puertas, validacion, ventanas),
     )
 
 
@@ -211,6 +246,8 @@ def generar_plano_multipisos(
             distribucion=distribucion,
             ancho_puerta_m=ANCHO_PUERTA_M,
             espesor_muro_m=ESPESOR_INTERIOR_M,
+            puerta_exterior=i == 0,
+            espesor_exterior_m=ESPESOR_EXTERIOR_M,
         )
 
         ventanas = generar_ventanas_automaticas(
@@ -238,6 +275,10 @@ def generar_plano_multipisos(
             ruta_dxf=Path(ruta_dxf),
             mobiliario=mobiliario,
             ventanas=ventanas,
+            avisos=_avisos(
+                distribucion, puertas, validacion, ventanas, planta_baja=i == 0
+            ),
+            notas=_notas(requerimientos, distribucion),
         ))
 
         pisos_datos_dxf.append({

@@ -21,6 +21,24 @@ TIEMPO_MAXIMO_SEGUNDOS = 15
 
 LONGITUD_MINIMA_ADYACENCIA_DM = 8
 
+# Pared compartida necesaria para poner una puerta, y lado mínimo del pasillo.
+LONGITUD_MINIMA_ACCESO_DM = 12
+MIN_LADO_PASILLO_DM = 12
+
+# Hueco mínimo entre ambientes que no deben tocarse (p. ej. dos baños).
+SEPARACION_MINIMA_DM = 10
+
+# Tiempo máximo de cada intento con reglas antes de relajarlas.
+TIEMPO_MAXIMO_REGLAS_SEGUNDOS = 10
+
+# Ambientes que no necesitan ventana propia.
+AMBIENTES_SIN_VENTANA = {"pasillo", "closet", "deposito"}
+
+# Compactación: cuánto puede alejarse cada área de su objetivo para que la
+# vivienda quede sin huecos, y tiempo dedicado a ello.
+HOLGURA_AREA_COMPACTACION = 0.12
+TIEMPO_COMPACTACION_SEGUNDOS = 6
+
 
 # ------------------------------------------------------------
 # PROPORCIONES MÁXIMAS POR TIPO DE AMBIENTE
@@ -36,6 +54,7 @@ PROPORCIONES_AMBIENTES = {
     "estudio": 1.6,
     "terraza": 2.0,
     "escalera": 2.5,
+    "pasillo": 6.0,
 }
 
 PROPORCION_DEFAULT = 2.0

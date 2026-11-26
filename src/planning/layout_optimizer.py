@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 
 from ortools.sat.python import cp_model
 
@@ -7,6 +8,13 @@ from src.planning.reglas_ambientes import (  # noqa: F401
     MIN_LADO_DM,
     TIEMPO_MAXIMO_SEGUNDOS,
     LONGITUD_MINIMA_ADYACENCIA_DM,
+    LONGITUD_MINIMA_ACCESO_DM,
+    MIN_LADO_PASILLO_DM,
+    SEPARACION_MINIMA_DM,
+    TIEMPO_MAXIMO_REGLAS_SEGUNDOS,
+    HOLGURA_AREA_COMPACTACION,
+    TIEMPO_COMPACTACION_SEGUNDOS,
+    AMBIENTES_SIN_VENTANA,
     PROPORCIONES_AMBIENTES,
     PROPORCION_DEFAULT,
     AMBIENTES_SOCIALES,
@@ -20,12 +28,52 @@ from src.planning.reglas_ambientes import (  # noqa: F401
     obtener_proporcion_maxima,
     obtener_areas_ambiente,
 )
-from src.planning.restricciones import agregar_adyacencia_fisica  # noqa: F401
+from src.planning.reglas_acceso import (
+    asignar_en_suite,
+    completar_programa,
+    elegir_entrada,
+    puede_dar_acceso,
+    tipo_base,
+)
+from src.planning.restricciones import (  # noqa: F401
+    agregar_adyacencia_fisica,
+    agregar_separacion,
+)
 from src.utils.texto import normalizar_nombre
 
 
 PESO_RELACIONES_USUARIO = 3
 PESO_ZONIFICACION_SOCIAL = 1
+# Los huecos se miden en dm² y pesan más que las distancias (dm).
+PESO_HUECOS = 10
+PESO_DESVIACION_AREA = 3
+# Equivale a 5 m² de huecos: se prefiere que los ambientes tengan ventana.
+PESO_SIN_VENTANA = 5000
+
+
+@dataclass(frozen=True)
+class Nivel:
+    """Conjunto de reglas que se intenta cumplir; se relajan por orden."""
+
+    nombre: str
+    acceso: bool = True
+    pasillo: bool = True
+    separar_banos: bool = True
+    preferencias: bool = True
+
+
+NIVELES = (
+    Nivel("completo"),
+    Nivel("sin_preferencias", preferencias=False),
+    Nivel(
+        "sin_separacion",
+        pasillo=False, separar_banos=False, preferencias=False,
+    ),
+    Nivel(
+        "basico",
+        acceso=False, pasillo=False, separar_banos=False, preferencias=False,
+    ),
+)
 
 
 # ============================================================
@@ -225,11 +273,17 @@ def _crear_variables_ambientes(
         x = modelo.NewIntVar(0, ancho_terreno_dm, f"x_{identificador}")
         y = modelo.NewIntVar(0, largo_terreno_dm, f"y_{identificador}")
 
+        lado_minimo = (
+            MIN_LADO_PASILLO_DM if nombre_ambiente == "pasillo" else MIN_LADO_DM
+        )
+
         ancho = modelo.NewIntVar(
-            MIN_LADO_DM, ancho_terreno_dm, f"ancho_{identificador}"
+            min(lado_minimo, ancho_terreno_dm), ancho_terreno_dm,
+            f"ancho_{identificador}"
         )
         largo = modelo.NewIntVar(
-            MIN_LADO_DM, largo_terreno_dm, f"largo_{identificador}"
+            min(lado_minimo, largo_terreno_dm), largo_terreno_dm,
+            f"largo_{identificador}"
         )
 
         # Proporción máxima entre lados.
@@ -312,84 +366,123 @@ def _proximidad_ambientes_sociales(
     return proximidad
 
 
-def _adyacencias_globales(
-    modelo, nodos, variables, ancho_terreno_dm, largo_terreno_dm
-):
-    """Una variable de adyacencia física por cada pareja de ambientes."""
+class _Adyacencias:
+    """Variables de adyacencia física, creadas solo cuando se necesitan."""
 
-    adyacencias = {}
+    def __init__(self, modelo, variables, ancho_terreno_dm, largo_terreno_dm):
+        self.modelo = modelo
+        self.variables = variables
+        self.terreno = (ancho_terreno_dm, largo_terreno_dm)
+        self.creadas = {}
 
-    for i in range(len(nodos)):
-        for j in range(i + 1, len(nodos)):
+    def par(self, id_a, id_b, minimo=LONGITUD_MINIMA_ADYACENCIA_DM):
+        id_a, id_b = sorted((id_a, id_b))
+        clave = (id_a, id_b, minimo)
 
-            id_a = nodos[i]["id"]
-            id_b = nodos[j]["id"]
-
-            adyacencias[tuple(sorted((id_a, id_b)))] = (
-                agregar_adyacencia_fisica(
-                    modelo=modelo,
-                    ambiente_a=variables[id_a],
-                    ambiente_b=variables[id_b],
-                    identificador=f"global_{i}_{j}",
-                    ancho_terreno_dm=ancho_terreno_dm,
-                    largo_terreno_dm=largo_terreno_dm,
-                )
+        if clave not in self.creadas:
+            self.creadas[clave] = agregar_adyacencia_fisica(
+                modelo=self.modelo,
+                ambiente_a=self.variables[id_a],
+                ambiente_b=self.variables[id_b],
+                identificador=f"{len(self.creadas)}",
+                ancho_terreno_dm=self.terreno[0],
+                largo_terreno_dm=self.terreno[1],
+                minimo=minimo,
             )
 
-    return adyacencias
+        return self.creadas[clave]
 
 
-def _conectividad_global(modelo, nodos, adyacencias):
+def _conectividad(modelo, ids, raiz, arco):
     """
-    Garantiza que todos los ambientes formen una sola red mediante
-    un flujo desde el primer ambiente (raíz) que solo circula por
-    pares físicamente adyacentes.
+    Garantiza que desde `raiz` se llegue a todos los ambientes mediante un
+    flujo. `arco(desde, hacia)` devuelve la variable que habilita ese sentido
+    (adyacencia física) o None si por ahí no se puede pasar.
     """
 
-    cantidad = len(nodos)
+    capacidad = len(ids) - 1
 
-    if cantidad <= 1:
+    if capacidad < 1:
         return
 
-    capacidad = cantidad - 1
+    salientes = {i: [] for i in ids}
+    entrantes = {i: [] for i in ids}
 
-    salientes = {nodo["id"]: [] for nodo in nodos}
-    entrantes = {nodo["id"]: [] for nodo in nodos}
+    for desde in ids:
+        for hacia in ids:
 
-    for i in range(cantidad):
-        for j in range(i + 1, cantidad):
+            if desde == hacia or hacia == raiz:
+                continue
 
-            id_a = nodos[i]["id"]
-            id_b = nodos[j]["id"]
+            habilitado = arco(desde, hacia)
 
-            adyacente = adyacencias[tuple(sorted((id_a, id_b)))]
+            if habilitado is None:
+                continue
 
-            flujo_ab = modelo.NewIntVar(0, capacidad, f"flujo_{i}_{j}")
-            flujo_ba = modelo.NewIntVar(0, capacidad, f"flujo_{j}_{i}")
+            flujo = modelo.NewIntVar(0, capacidad, f"flujo_{desde}_{hacia}")
+            modelo.Add(flujo <= capacidad * habilitado)
 
-            modelo.Add(flujo_ab <= capacidad * adyacente)
-            modelo.Add(flujo_ba <= capacidad * adyacente)
+            salientes[desde].append(flujo)
+            entrantes[hacia].append(flujo)
 
-            salientes[id_a].append(flujo_ab)
-            entrantes[id_b].append(flujo_ab)
+    for identificador in ids:
 
-            salientes[id_b].append(flujo_ba)
-            entrantes[id_a].append(flujo_ba)
-
-    for indice, nodo in enumerate(nodos):
-
-        identificador = nodo["id"]
-
-        flujo_neto = (
-            sum(salientes[identificador])
-            - sum(entrantes[identificador])
-        )
+        flujo_neto = sum(salientes[identificador]) - sum(entrantes[identificador])
 
         # La raíz reparte una unidad a cada otro ambiente.
-        if indice == 0:
-            modelo.Add(flujo_neto == capacidad)
-        else:
-            modelo.Add(flujo_neto == -1)
+        modelo.Add(flujo_neto == (capacidad if identificador == raiz else -1))
+
+
+def _reglas_de_acceso(modelo, ids, adyacencias, entrada, en_suite):
+    """Solo se pasa de un ambiente a otro donde tiene sentido una puerta."""
+
+    def arco(desde, hacia):
+        if not puede_dar_acceso(desde, hacia, en_suite, entrada):
+            return None
+        return adyacencias.par(desde, hacia, LONGITUD_MINIMA_ACCESO_DM)
+
+    _conectividad(modelo, ids, entrada, arco)
+
+
+def _entrada_al_frente(modelo, ids, variables, entrada):
+    """La entrada da a la fachada frontal y su pared admite una puerta."""
+
+    for identificador in ids:
+        if identificador != entrada:
+            modelo.Add(variables[entrada]["y"] <= variables[identificador]["y"])
+
+    modelo.Add(variables[entrada]["ancho"] >= LONGITUD_MINIMA_ACCESO_DM)
+
+
+def _separar_banos(modelo, ids, variables, relaciones):
+    """Dos baños no comparten pared, salvo que el usuario lo pida."""
+
+    pedidos = {frozenset(par) for r in relaciones for par in r["pares"]}
+    banos = [i for i in ids if tipo_base(i) == "bano"]
+
+    for i, id_a in enumerate(banos):
+        for id_b in banos[i + 1:]:
+            if frozenset((id_a, id_b)) not in pedidos:
+                agregar_separacion(
+                    modelo, variables[id_a], variables[id_b],
+                    f"{id_a}_{id_b}", SEPARACION_MINIMA_DM,
+                )
+
+
+def _cocina_junto_al_comedor(modelo, ids, adyacencias):
+    """La cocina va junto al comedor o, si no hay, junto a la sala."""
+
+    cocinas = [i for i in ids if tipo_base(i) == "cocina"]
+
+    for destino in ("comedor", "sala"):
+        destinos = [i for i in ids if tipo_base(i) == destino]
+        if destinos:
+            if cocinas:
+                modelo.AddBoolOr([
+                    adyacencias.par(cocinas[0], d, LONGITUD_MINIMA_ACCESO_DM)
+                    for d in destinos
+                ])
+            return
 
 
 def _relaciones_usuario(modelo, relaciones, adyacencias):
@@ -409,9 +502,7 @@ def _relaciones_usuario(modelo, relaciones, adyacencias):
                     "una relación de adyacencia consigo mismo."
                 )
 
-            adyacencias_pares.append(
-                adyacencias[tuple(sorted((id_a, id_b)))]
-            )
+            adyacencias_pares.append(adyacencias.par(id_a, id_b))
 
         # "correspondiente" ya viene emparejado desde el grafo.
         if modo in ("todos", "correspondiente"):
@@ -496,9 +587,70 @@ def _distancias_relaciones(
     return distancias
 
 
-def _resolver(modelo):
+def _huecos(modelo, variables, area_total, ancho_terreno_dm, largo_terreno_dm):
+    """
+    Superficie sin usar dentro del rectángulo que envuelve la vivienda:
+    minimizarla produce una forma compacta, sin entrantes ni patios sueltos.
+
+    Devuelve (huecos, bordes), con los bordes en el orden
+    izquierdo, derecho, inferior y superior.
+    """
+
+    lados = []
+    bordes = []
+
+    for eje, fin, limite in (
+        ("x", "fin_x", ancho_terreno_dm), ("y", "fin_y", largo_terreno_dm)
+    ):
+        desde = modelo.NewIntVar(0, limite, f"envolvente_desde_{eje}")
+        hasta = modelo.NewIntVar(0, limite, f"envolvente_hasta_{eje}")
+        modelo.AddMinEquality(desde, [d[eje] for d in variables.values()])
+        modelo.AddMaxEquality(hasta, [d[fin] for d in variables.values()])
+
+        lado = modelo.NewIntVar(0, limite, f"envolvente_lado_{eje}")
+        modelo.Add(lado == hasta - desde)
+        lados.append(lado)
+        bordes += [desde, hasta]
+
+    envolvente = modelo.NewIntVar(
+        0, ancho_terreno_dm * largo_terreno_dm, "envolvente_area"
+    )
+    modelo.AddMultiplicationEquality(envolvente, lados)
+
+    return envolvente - area_total, bordes
+
+
+def _ambientes_interiores(modelo, ids, variables, bordes):
+    """
+    Un booleano por cada ambiente que necesita ventana y que vale 1 si no toca
+    ningún lado del rectángulo envolvente.
+    """
+
+    interiores = []
+
+    for identificador in ids:
+
+        if tipo_base(identificador) in AMBIENTES_SIN_VENTANA | {"escalera"}:
+            continue
+
+        datos = variables[identificador]
+        interior = modelo.NewBoolVar(f"interior_{identificador}")
+        lados = []
+
+        for clave, borde in zip(("x", "fin_x", "y", "fin_y"), bordes):
+            toca = modelo.NewBoolVar(f"toca_{clave}_{identificador}")
+            modelo.Add(datos[clave] == borde).OnlyEnforceIf(toca)
+            lados.append(toca)
+
+        modelo.AddBoolOr(lados + [interior])
+        interiores.append(interior)
+
+    return interiores
+
+
+def _resolver(modelo, segundos=TIEMPO_MAXIMO_SEGUNDOS):
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = TIEMPO_MAXIMO_SEGUNDOS
+    solver.parameters.max_time_in_seconds = segundos
     estado = solver.Solve(modelo)
     return solver, estado
 
@@ -533,25 +685,29 @@ def _extraer_resultado(solver, nodos, variables):
 # 3. OPTIMIZACIÓN DE LA DISTRIBUCIÓN
 # ============================================================
 
-def optimizar_distribucion(requerimientos):
+def optimizar_distribucion(requerimientos, planta_baja: bool = True):
     """
     Genera una distribución espacial preliminar
     mediante programación por restricciones.
 
-    Objetivos (en dos fases, lexicográficos):
+    Objetivos (en dos fases):
 
     1. Aproximar las superficies a sus áreas objetivo.
-    2. Con esa desviación fija, minimizar las distancias entre
-       ambientes relacionados y agrupar los ambientes sociales.
+    2. Con cada área dentro de un margen de la hallada, compactar la forma
+       de la vivienda, minimizar las distancias entre ambientes relacionados
+       y agrupar los ambientes sociales.
 
-    Restricciones:
+    Restricciones permanentes:
 
-    - Ambientes dentro del terreno.
-    - Sin superposición entre ambientes.
-    - Respeto de las áreas mínimas.
-    - Control de proporciones geométricas.
+    - Ambientes dentro del terreno y sin superposición.
+    - Respeto de las áreas mínimas y control de proporciones.
     - Adyacencia física cuando se solicita.
     - Conectividad global de la distribución.
+
+    Reglas de funcionamiento (ver `reglas_acceso`): entrada en la fachada,
+    acceso a cada ambiente sin cruzar dormitorios ni baños, pasillo, baños
+    separados, baño en suite y cocina junto al comedor. Si no caben, se van
+    relajando según `NIVELES`.
     """
 
     ancho_terreno_dm, largo_terreno_dm = _validar_terreno(requerimientos)
@@ -561,12 +717,58 @@ def optimizar_distribucion(requerimientos):
     grafo = construir_grafo(requerimientos)
 
     _validar_grafo(grafo)
+    _validar_ambientes(grafo["nodos"])
+    _validar_capacidad_terreno(
+        requerimientos, grafo["nodos"], area_terreno_dm2
+    )
+
+    con_pasillo = completar_programa(requerimientos)
+    intentados = []
+
+    for nivel in NIVELES:
+
+        programa = con_pasillo if nivel.pasillo else requerimientos
+        grafo_nivel = construir_grafo(programa)
+
+        # Si no se añadió pasillo, dos niveles pueden quedar idénticos.
+        firma = (
+            len(grafo_nivel["nodos"]), nivel.acceso,
+            nivel.separar_banos, nivel.preferencias,
+        )
+        if firma in intentados:
+            continue
+        intentados.append(firma)
+
+        resultado = _resolver_nivel(
+            grafo_nivel, nivel, ancho_terreno_dm, largo_terreno_dm,
+            planta_baja,
+        )
+
+        if resultado is not None:
+            return resultado
+
+    raise ValueError(
+        "No se encontró una distribución espacial factible. "
+        "Comprueba las áreas solicitadas, las relaciones "
+        "de adyacencia y las dimensiones del terreno. "
+        "También puede existir una incompatibilidad "
+        "con la conectividad global."
+    )
+
+
+def _resolver_nivel(
+    grafo, nivel, ancho_terreno_dm, largo_terreno_dm, planta_baja
+):
+    """Distribución que cumple las reglas del nivel, o None si no la halla."""
+
+    area_terreno_dm2 = ancho_terreno_dm * largo_terreno_dm
 
     nodos = grafo["nodos"]
     relaciones = grafo["relaciones"]
+    ids = [nodo["id"] for nodo in nodos]
 
-    _validar_ambientes(nodos)
-    _validar_capacidad_terreno(requerimientos, nodos, area_terreno_dm2)
+    if sum(obtener_areas_ambiente(n)[0] for n in nodos) > area_terreno_dm2:
+        return None
 
     modelo = cp_model.CpModel()
 
@@ -583,12 +785,27 @@ def optimizar_distribucion(requerimientos):
 
     modelo.AddNoOverlap2D(intervalos_x, intervalos_y)
 
-    # Adyacencia, conectividad y relaciones del usuario.
-    adyacencias = _adyacencias_globales(
-        modelo, nodos, variables, ancho_terreno_dm, largo_terreno_dm
+    # Conectividad, reglas de funcionamiento y relaciones del usuario.
+    adyacencias = _Adyacencias(
+        modelo, variables, ancho_terreno_dm, largo_terreno_dm
     )
 
-    _conectividad_global(modelo, nodos, adyacencias)
+    if nivel.acceso:
+        entrada = elegir_entrada(ids, planta_baja)
+        en_suite = (
+            asignar_en_suite(ids, relaciones) if nivel.preferencias else {}
+        )
+        _reglas_de_acceso(modelo, ids, adyacencias, entrada, en_suite)
+        if planta_baja:
+            _entrada_al_frente(modelo, ids, variables, entrada)
+    else:
+        _conectividad(modelo, ids, ids[0], adyacencias.par)
+
+    if nivel.separar_banos:
+        _separar_banos(modelo, ids, variables, relaciones)
+
+    if nivel.preferencias:
+        _cocina_junto_al_comedor(modelo, ids, adyacencias)
 
     _relaciones_usuario(modelo, relaciones, adyacencias)
 
@@ -596,36 +813,55 @@ def optimizar_distribucion(requerimientos):
     modelo.Add(area_total == sum(variables_area))
 
     # Fase 1: minimizar las desviaciones de área.
-    desviacion_total = sum(
-        _desviaciones_de_area(modelo, nodos, variables, area_terreno_dm2)
+    desviaciones = _desviaciones_de_area(
+        modelo, nodos, variables, area_terreno_dm2
     )
+    desviacion_total = sum(desviaciones)
 
     modelo.Minimize(desviacion_total)
 
-    solver, estado = _resolver(modelo)
+    segundos = (
+        TIEMPO_MAXIMO_REGLAS_SEGUNDOS if nivel.acceso
+        else TIEMPO_MAXIMO_SEGUNDOS
+    )
+    solver, estado = _resolver(modelo, segundos)
 
     if estado not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        raise ValueError(
-            "No se encontró una distribución espacial factible. "
-            "Comprueba las áreas solicitadas, las relaciones "
-            "de adyacencia y las dimensiones del terreno. "
-            "También puede existir una incompatibilidad "
-            "con la conectividad global."
-        )
+        return None
 
-    # Fase 2: conservar la mejor desviación y minimizar distancias.
-    modelo.Add(desviacion_total == solver.Value(desviacion_total))
+    # Fase 2: compactar sin alejar demasiado ningún área de su objetivo.
+    for desviacion, nodo in zip(desviaciones, nodos):
+        objetivo = variables[nodo["id"]]["area_objetivo"]
+        modelo.Add(desviacion <= max(
+            solver.Value(desviacion),
+            int(objetivo * HOLGURA_AREA_COMPACTACION),
+        ))
+
+    huecos, bordes = _huecos(
+        modelo, variables, area_total, ancho_terreno_dm, largo_terreno_dm
+    )
+    interiores = _ambientes_interiores(modelo, ids, variables, bordes)
 
     distancias = _distancias_relaciones(
         modelo, relaciones, variables, ancho_terreno_dm, largo_terreno_dm
     )
 
     modelo.Minimize(
-        PESO_RELACIONES_USUARIO * sum(distancias)
+        PESO_HUECOS * huecos
+        + PESO_SIN_VENTANA * sum(interiores)
+        + PESO_DESVIACION_AREA * desviacion_total
+        + PESO_RELACIONES_USUARIO * sum(distancias)
         + PESO_ZONIFICACION_SOCIAL * sum(proximidad_social)
     )
 
-    solver_final, estado_final = _resolver(modelo)
+    # La solución de la fase 1 sirve de punto de partida.
+    for datos in variables.values():
+        for clave in ("x", "y", "ancho", "largo"):
+            modelo.AddHint(datos[clave], solver.Value(datos[clave]))
+
+    solver_final, estado_final = _resolver(
+        modelo, TIEMPO_COMPACTACION_SEGUNDOS
+    )
 
     # Si la segunda fase no mejora o no es factible, se conserva la primera.
     if estado_final in (cp_model.OPTIMAL, cp_model.FEASIBLE):
@@ -671,11 +907,13 @@ def optimizar_por_pisos(requerimientos) -> list[list[dict]]:
         return [optimizar_distribucion(requerimientos)]
 
     distribuciones = []
-    for piso_ambs in [baja, alta]:
+    for indice, piso_ambs in enumerate([baja, alta]):
         piso_ambs = list(piso_ambs) + [Ambiente(nombre="escalera", cantidad=1)]
         sub_req = requerimientos.model_copy(
             update={"ambientes": piso_ambs, "numero_pisos": 1}
         )
-        distribuciones.append(optimizar_distribucion(sub_req))
+        distribuciones.append(
+            optimizar_distribucion(sub_req, planta_baja=indice == 0)
+        )
 
     return distribuciones

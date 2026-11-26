@@ -40,6 +40,26 @@ asistente que crea el archivo `.env` por ti.
 Por ahora los cambios admitidos son cambiar el área de un ambiente y moverlo
 respecto a otro, y solo en planos de una planta.
 
+## Reglas de distribución
+
+Se aplican aunque no las pidas; lo que pidas expresamente (p. ej. qué ambientes
+van juntos) tiene prioridad.
+
+- Puerta a la calle en la sala (o el ambiente de entrada), en el frente.
+- A cada ambiente se llega sin cruzar dormitorios ni baños. A dormitorios y
+  baños se entra desde el pasillo, la sala o la escalera.
+- Si hay varios dormitorios y baños, se añade un pasillo.
+- Los baños no comparten pared y, si hay dos o más, uno es privado de un
+  dormitorio.
+- La cocina va junto al comedor (o a la sala).
+- La vivienda sale compacta, sin huecos, y procurando que cada ambiente toque
+  el exterior para tener ventana. Para lograrlo las áreas pueden variar
+  alrededor de un 12 % y generar cada planta tarda unos segundos más.
+
+Si el terreno no permite cumplirlas todas, el plano se genera igualmente y
+muestra cuáles no se cumplen. Todavía no se garantiza ventana en todos los
+ambientes (también se avisa).
+
 ---
 
 ## Proveedores LLM
@@ -181,7 +201,7 @@ src/
 server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
-tests/                  # 290 tests pytest
+tests/                  # 330 tests pytest
 ```
 
 ---

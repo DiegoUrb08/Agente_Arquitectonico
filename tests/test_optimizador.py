@@ -8,6 +8,7 @@ from src.models.defaults import calcular_areas_predeterminadas
 from src.models.distribucion import validar_esquema_distribucion
 from src.models.requirements import Ambiente, RequerimientosArquitectonicos
 from src.planning.layout_optimizer import optimizar_distribucion
+from src.planning.reglas_ambientes import HOLGURA_AREA_COMPACTACION
 
 
 def _req(ambientes, relaciones=(), ancho=10, largo=20):
@@ -38,18 +39,24 @@ def _comprobar_invariantes(dist, ancho, largo):
     assert validar_distribucion(dist)["distribucion_conectada"] is True
 
 
-def test_caso_simple_cumple_areas_exactas_y_relacion():
+def _comprobar_areas(dist):
+    """Compactar solo puede alejar cada área un margen de su objetivo."""
+    for a in dist:
+        margen = a["area_objetivo_m2"] * HOLGURA_AREA_COMPACTACION
+        assert abs(a["area_m2"] - a["area_objetivo_m2"]) <= margen + 0.1, a["id"]
+
+
+def test_caso_simple_cumple_areas_y_relacion():
     dist = optimizar_distribucion(_req(
         [Ambiente(nombre="sala"), Ambiente(nombre="cocina"),
          Ambiente(nombre="dormitorio", cantidad=2), Ambiente(nombre="baño")],
         [["sala", "cocina"]],
     ))
 
-    assert len(dist) == 5
+    assert len(dist) == 6  # incluye el pasillo automático
     _comprobar_invariantes(dist, 10, 20)
     assert _par_adyacente(dist, "sala_1", "cocina_1")
-    # Óptimo conocido de la fase 1: las áreas objetivo se alcanzan exactamente.
-    assert sum(abs(a["area_m2"] - a["area_objetivo_m2"]) for a in dist) == pytest.approx(0, abs=0.01)
+    _comprobar_areas(dist)
 
 
 def test_caso_completo_con_relaciones_de_todos_los_modos():
@@ -64,7 +71,7 @@ def test_caso_completo_con_relaciones_de_todos_los_modos():
         ],
     ))
 
-    assert len(dist) == 8
+    assert len(dist) == 9  # incluye el pasillo automático
     _comprobar_invariantes(dist, 10, 20)
     assert _par_adyacente(dist, "sala_1", "comedor_1")
     assert _par_adyacente(dist, "comedor_1", "cocina_1")
@@ -73,8 +80,7 @@ def test_caso_completo_con_relaciones_de_todos_los_modos():
         for d in ("dormitorio_1", "dormitorio_2")
         for b in ("bano_1", "bano_2")
     )
-    # El óptimo de la fase 1 para este caso es 0.09 m² de desviación total.
-    assert sum(abs(a["area_m2"] - a["area_objetivo_m2"]) for a in dist) == pytest.approx(0.09, abs=0.011)
+    _comprobar_areas(dist)
 
 
 def test_modo_correspondiente():

@@ -89,7 +89,7 @@ def test_pipeline_genera_dxf_y_reporta_etapas(tmp_path):
     r = generar_plano(_requerimientos(), tmp_path / "salida" / "plano.dxf", progreso=etapas.append)
 
     assert r.ruta_dxf.exists()
-    assert len(r.distribucion) == 4
+    assert len(r.distribucion) == 5  # incluye el pasillo automático
     assert r.validacion["distribucion_conectada"] is True
     assert len(etapas) == 9
 
@@ -226,7 +226,7 @@ def test_csv_areas_monopiso(tmp_path):
     csv_text = generar_csv_areas(r)
     lineas = csv_text.strip().splitlines()
     assert lineas[0] == "piso,ambiente,area_m2,ancho_m,largo_m"
-    assert len(lineas) == 5   # cabecera + 4 ambientes
+    assert len(lineas) == 6   # cabecera + 4 ambientes + pasillo
 
 
 def test_csv_areas_multipisos(tmp_path):

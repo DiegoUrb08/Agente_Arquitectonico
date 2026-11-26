@@ -1,6 +1,14 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def compactacion_breve(monkeypatch):
+    """La compactación agota su tiempo; en los tests basta con un segundo."""
+    monkeypatch.setattr(
+        "src.planning.layout_optimizer.TIEMPO_COMPACTACION_SEGUNDOS", 1
+    )
+
+
 @pytest.fixture
 def distribucion_simple():
     """Dos ambientes contiguos de 5x4 y 3x4 m dentro de un terreno de 10x10."""

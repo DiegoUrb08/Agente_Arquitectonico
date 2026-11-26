@@ -9,6 +9,7 @@ from shapely.geometry import LineString, MultiLineString
 from shapely.ops import unary_union
 
 from src.geometry.opening_generator import construir_abertura
+from src.planning.reglas_ambientes import AMBIENTES_SIN_VENTANA as SIN_VENTANA
 from src.utils.texto import normalizar_nombre
 
 # Ancho de ventana por tipo de ambiente (m). Resto: ANCHO_PREDETERMINADO.
@@ -20,9 +21,6 @@ ANCHOS_POR_AMBIENTE = {
     "cocina": 1.20,
     "bano": 0.60,
 }
-
-# Ambientes que no necesitan ventana propia.
-SIN_VENTANA = {"pasillo", "closet", "deposito"}
 
 MARGEN_EXTREMOS_M = 0.40
 SEPARACION_M = 0.05

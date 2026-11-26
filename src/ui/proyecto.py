@@ -90,6 +90,27 @@ def _mensaje(rol: str, texto: str, detalle: str | None = None) -> dict:
     return {"rol": rol, "texto": texto, "detalle": detalle}
 
 
+def _por_piso(resultado, atributo: str) -> list[str]:
+    """Notas o avisos de todas las plantas, indicando cuál si hay varias."""
+    pisos = pisos_de(resultado)
+    textos = []
+    for i, piso in enumerate(pisos):
+        planta = "" if len(pisos) == 1 else (
+            "Planta baja: " if i == 0 else f"Planta alta {i}: "
+        )
+        textos += [planta + t for t in getattr(piso, atributo)]
+    return textos
+
+
+def observaciones_del_plano(resultado) -> str:
+    """Texto para el chat con lo añadido y las reglas no cumplidas."""
+    lineas = list(dict.fromkeys(
+        t.split(": ", 1)[-1] for t in _por_piso(resultado, "notas")
+    ))
+    lineas += [f"⚠️ {t}" for t in _por_piso(resultado, "avisos")]
+    return "".join(f"\n\n{linea}" for linea in lineas)
+
+
 def _geometria(ambiente: dict) -> tuple:
     return tuple(round(ambiente[k], 3) for k in ("x", "y", "ancho", "largo"))
 
@@ -131,8 +152,9 @@ def proyecto_inicial(requerimientos, texto: str, resultado, dxf: bytes) -> dict:
             _mensaje("usuario", texto),
             _mensaje(
                 "agente",
-                f"Plano generado: {describir_plano(resultado)}.\n\n"
-                + _invitacion(resultado),
+                f"Plano generado: {describir_plano(resultado)}."
+                + observaciones_del_plano(resultado)
+                + "\n\n" + _invitacion(resultado),
             ),
         ],
     }
@@ -170,8 +192,9 @@ def abrir_proyecto(dxf: bytes, nombre_archivo: str, progreso=None) -> dict:
         "mensajes": [
             _mensaje(
                 "agente",
-                f"Abrí «{nombre_archivo}»: {describir_plano(resultado)}.\n\n"
-                + _invitacion(resultado),
+                f"Abrí «{nombre_archivo}»: {describir_plano(resultado)}."
+                + observaciones_del_plano(resultado)
+                + "\n\n" + _invitacion(resultado),
             ),
         ],
     }
@@ -204,7 +227,11 @@ def aplicar_edicion(proyecto: dict, texto: str, solicitud) -> None:
     respuesta = f"Listo, versión {numero}:\n" + "\n".join(f"- {l}" for l in lineas)
     if cambiados:
         respuesta += "\n\nLo modificado aparece resaltado en el plano."
-    for aviso in resultado["observaciones"]:
+    previos = set(_por_piso(actual["resultado"], "avisos"))
+    nuevos = [
+        a for a in _por_piso(resultado["plano"], "avisos") if a not in previos
+    ]
+    for aviso in [*resultado["observaciones"], *nuevos]:
         respuesta += f"\n\n⚠️ {aviso}"
     proyecto["mensajes"].append(_mensaje("agente", respuesta))
 

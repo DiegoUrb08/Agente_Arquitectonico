@@ -206,7 +206,10 @@ def mostrar_puertas(resultado_puertas) -> None:
             {
                 "Puerta": i,
                 "Ambiente A": p.get("ambiente_a", ""),
-                "Ambiente B": p.get("ambiente_b", ""),
+                "Ambiente B": (
+                    "Exterior" if p.get("ambiente_b") == "exterior"
+                    else p.get("ambiente_b", "")
+                ),
                 "Orientación": p["orientacion"],
                 "Ancho (m)": p["ancho"],
                 "Longitud de pared (m)": p.get("longitud_pared_m", 0),
@@ -239,6 +242,12 @@ def mostrar_resultado(
 
     piso = pisos[indice]
     tarjetas_resumen(piso)
+
+    if piso.avisos:
+        st.warning(
+            "Reglas que este plano no cumple:\n"
+            + "\n".join(f"- {aviso}" for aviso in piso.avisos)
+        )
 
     nombres = ["Plano", "Ambientes", "Conectividad", "Puertas"]
     if requerimientos is not None:

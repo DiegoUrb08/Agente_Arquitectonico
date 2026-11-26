@@ -286,11 +286,25 @@ Ideas siguientes: peticiones que cambian el programa ("agrega un estudio") regen
 
 Estas tres van por delante de todo lo demás, en este orden.
 
-### 1. Distribución con lógica arquitectónica
-Con prompts ambiguos ("quiero 2 baños, 2 dormitorios, 1 sala...") la distribución que sale del optimizador no tiene lógica arquitectónica. Hay que definir reglas por defecto que se apliquen aunque el usuario no las pida, para que los planos sean funcionales. Por ejemplo:
-- Dos baños no pueden estar juntos.
-- Al menos una puerta debe dar al exterior.
-- (Ampliar la lista: zonificación social/privada, acceso a baños desde zonas de circulación, cocina junto al comedor, etc.)
+### 1. Distribución con lógica arquitectónica — ✅ IMPLEMENTADA (2026-11-25)
+Problema: con prompts ambiguos los planos no eran funcionales. Causas: se ponía una puerta en cada pared compartida, no había puerta al exterior y el optimizador solo exigía que los ambientes se tocaran.
+
+Hecho:
+- `src/planning/reglas_acceso.py`: fuente única de las reglas para el optimizador, las puertas y los avisos.
+- Optimizador: conectividad dirigida desde la entrada (dormitorios y baños no sirven de paso), entrada en la fachada, baños sin pared común, baño en suite, cocina junto al comedor y pasillo automático. Si no hay solución se relajan por niveles (`NIVELES`).
+- Puertas: una por acceso lógico, comunicación entre ambientes sociales y puerta exterior. Los accesos de respaldo (p. ej. tras editar) generan aviso.
+- La interfaz y el chat muestran las reglas no cumplidas.
+
+Compactación (segunda fase del optimizador): minimiza el área vacía del rectángulo que envuelve la vivienda y prefiere que cada ambiente toque el exterior, dejando que cada área varíe hasta un 12 % (`HOLGURA_AREA_COMPACTACION`). Antes → después en seis programas: ocupación del rectángulo 67–94 % → 98–100 %; esquinas 11–27 → 4–6.
+
+Medido: 8 programas, todos resueltos en el nivel completo; unos 6–8 s por planta. Cinco prompts reales con Groq sin reglas incumplidas. 330 tests.
+
+Limitaciones:
+- No se garantiza ventana en todos los ambientes (se avisa), ni orientación solar.
+- **Ampliar un ambiente por chat se rechaza más** al no quedar huecos: en cuatro planos, ampliar un 20 % se aceptó 4 de 30 veces (10 de 30 sin compactar); reducir, 30 de 30 en ambos. Solución pendiente: que el editor redistribuya los vecinos.
+- La compactación deja a veces huecos diminutos entre ambientes (muros dobles).
+- En dos plantas cada una se compacta por separado: la escalera no queda alineada entre pisos (ya ocurría antes).
+- El editor solo avisa si una edición rompe reglas; con terrenos muy ajustados la relajación puede tardar varias decenas de segundos.
 
 ### 2. Vista 3D del plano
 Un apartado con un renderizado 3D del plano, con los techos abiertos. No tiene que ser simple: debe notarse que es 3D, la cámara debe poder girar y los muebles, puertas y paredes deben verse bien delimitados.
