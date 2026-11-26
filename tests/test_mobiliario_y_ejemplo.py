@@ -62,7 +62,7 @@ def test_la_mesa_se_corre_si_una_puerta_ocupa_el_centro():
     resultado = _amueblar(_ambiente("comedor_1", 2.4, 4.4), *puertas)
 
     assert resultado["omitidos"] == []
-    (mesa,) = resultado["mobiliario"]
+    (mesa,) = [m for m in resultado["mobiliario"] if m["tipo"] == "mesa_comedor"]
     assert not any(
         mesa["geometria"].intersects(_caja(x - 0.9, 1.55, x + 0.9, 2.45))
         for x in (0, 2.4)

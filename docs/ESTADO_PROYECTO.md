@@ -413,7 +413,18 @@ Límites:
 - Quinto ejemplo en la pantalla de inicio: dos plantas en 12 × 25 m, retiro frontal de 3 m, garaje, sala, comedor, cocina, lavandería, estudio, 3 dormitorios, 3 baños y norte a la derecha.
 - Mobiliario (`mobiliario_automatico.py`): si algo no cabe se prueban otros órdenes, luego solo el barrido real de la puerta y al final una ducha de 0,70 × 0,90 m; la mesa se corre si una puerta ocupa el centro; el portón del garaje ya no reserva espacio en los ambientes vecinos.
 - Medido: en 15 distribuciones del ejemplo, de 9 con todo el mobiliario a 15; sin avisos de reglas. Otras 5 generaciones con Groq: completas. Revisado en una captura del plano 2D.
-- Límites: el garaje no tiene auto dibujado; sala, cocina y comedor llevan pocos muebles; la planta alta puede dejar una ranura de luz angosta (menos de 1,5 m) con ventanas hacia ella.
+- Los límites observados entonces (garaje vacío, pocos muebles, ranura en la planta alta) se trataron en la sección siguiente.
+
+## Complementos de mobiliario y ventanas hacia ranuras — ✅ (2026-11-26)
+- `src/geometry/complementos.py`: sillas, mesa de centro y auto en el garaje (el auto no se exporta al IFC). No cuentan como omitidos si no caben.
+- `window_generator.py`: se prefieren paredes despejadas; hacia una ranura (menos de 1,5 m hasta otro ambiente) solo se abre ventana si no hay otra.
+- Las ranuras entre ambientes **siguen apareciendo** (los baños se separan 1,0 m). Se probó separarlos 1,5 m y estirar los vecinos: en 20 generaciones del ejemplo no redujo las ranuras y con 1,5 m 2 salieron con muebles faltantes, así que se descartó.
+
+## Mobiliario completo — ✅ CORREGIDO (2026-11-26)
+- Causa: el mueble principal se colocaba sin comprobar si dejaba sitio a sus complementos u otros muebles.
+- Ahora se prueban repartos con retroceso hasta que entren muebles y complementos, en cuatro etapas: zona holgada de puertas, solo su barrido, medidas reducidas y, al final, una franja de paso de 0,40 m.
+- La puerta de un garaje abre en 3D hacia la casa.
+- Medido en 60 plantas (942 piezas esperadas): faltantes de 43 a 0, sin superposiciones ni pasos bloqueados; 27 piezas con medidas reducidas y 5 dentro del barrido de una puerta (que debería abrir hacia el otro lado; el DXF no cambia el sentido). El auto entra de frente: un garaje con menos de 3,6 m de fondo queda vacío.
 
 ## Exportación BIM
 - **Exportación BIM — ✅ IMPLEMENTADA (2026-11-26).** Botón «Modelo BIM (IFC)» junto a DXF y CSV; el archivo se genera solo al pulsarlo (descarga diferida de Streamlit). `src/bim/ifc.py` (`generar_ifc`, IfcOpenShell 0.9, obligatoria en `requirements.txt`) produce IFC4 en metros:
@@ -440,7 +451,7 @@ Límites:
 - Elegir entre varias distribuciones propuestas.
 - Ventanas: altura de alféizar configurable. Norte en el DXF, el 3D y el IFC.
 - Retiros en el DXF, el 3D y el IFC.
-- Eliminar huecos diminutos entre muros.
+- Eliminar las ranuras angostas entre ambientes (requiere penalizarlas en el optimizador).
 - Medidas en 3D y en el IFC, o medidas libres de pared a pared.
 - Lámina en PDF con plano, cuadro de áreas, escala y rótulo.
 - BIM con materiales, cubierta y escalera como IfcStair.

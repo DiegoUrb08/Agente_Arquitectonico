@@ -99,7 +99,7 @@ def _fusionar_colineales(tramos):
     return tramos_finales
 
 
-def _perimetro_exterior(conjunto):
+def perimetro_exterior(conjunto):
     """Contorno de la vivienda más el de sus patios."""
     anillos = []
     for parte in getattr(conjunto, "geoms", [conjunto]):
@@ -112,6 +112,25 @@ def _perimetro_exterior(conjunto):
             ):
                 anillos.append(interior)
     return unary_union([LineString(a.coords) for a in anillos])
+
+
+def _da_a_ranura(tramo, ambiente, otros) -> bool:
+    """True si enfrente, a menos del ancho de un patio, hay otro ambiente."""
+    orientacion, valor, lo, hi = tramo
+    medio = (lo + hi) / 2
+    eje = 1 if orientacion == "h" else 0
+    limites = ambiente.bounds
+    # Hacia fuera: el lado contrario a aquel en que está el ambiente.
+    sentido = -1 if valor < (limites[eje] + limites[eje + 2]) / 2 else 1
+    desde, hasta = sorted((
+        valor + sentido * 0.01, valor + sentido * (ANCHO_MINIMO_PATIO_M - 0.01)
+    ))
+    if orientacion == "h":
+        zona = box(medio - 0.2, desde, medio + 0.2, hasta)
+    else:
+        zona = box(desde, medio - 0.2, hasta, medio + 0.2)
+
+    return any(zona.intersection(o).area > TOLERANCIA for o in otros)
 
 
 def _posiciones(tramo, ancho_ideal, espesor, ocupados):
@@ -175,7 +194,7 @@ def generar_ventanas_automaticas(
         raise ValueError("No hay ambientes para colocar ventanas.")
 
     conjunto = unary_union([a["poligono"] for a in ambientes])
-    perimetro = _perimetro_exterior(conjunto)
+    perimetro = perimetro_exterior(conjunto)
 
     # Huecos ya ocupados (puertas y ventanas aceptadas), con holgura.
     ocupados = [
@@ -197,7 +216,15 @@ def generar_ventanas_automaticas(
 
         exterior = ambiente["poligono"].boundary.intersection(perimetro)
         tramos = _fusionar_colineales(_tramos_rectos(exterior))
-        tramos.sort(key=lambda t: t[3] - t[2], reverse=True)
+        otros = [
+            a["poligono"] for a in ambientes if a["id"] != ambiente["id"]
+        ]
+        # Primero las paredes despejadas; a una ranura, solo si no hay otra.
+        ranuras = {
+            t for t in tramos
+            if _da_a_ranura(t, ambiente["poligono"], otros)
+        }
+        tramos.sort(key=lambda t: (t in ranuras, t[2] - t[3]))
 
         ancho_ideal = ANCHOS_POR_AMBIENTE.get(tipo, ANCHO_PREDETERMINADO_M)
         colocadas = 0
@@ -205,6 +232,9 @@ def generar_ventanas_automaticas(
         for tramo in tramos:
 
             if colocadas >= MAX_VENTANAS_POR_AMBIENTE:
+                break
+
+            if colocadas and tramo in ranuras:
                 break
 
             orientacion, valor = tramo[:2]

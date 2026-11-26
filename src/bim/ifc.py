@@ -319,6 +319,8 @@ class _Exportador:
             piezas = piezas_de_mueble(mueble, ambientes)
             alto = max((p["h1"] for p in piezas), default=0.75)
             tipo = mueble["tipo"]
+            if tipo == "auto":  # no es parte del edificio
+                continue
             nombre = tipo.replace("_", " ").capitalize()
             if tipo in SANITARIOS:
                 entidad = self._entidad("IfcSanitaryTerminal", nombre, planta,

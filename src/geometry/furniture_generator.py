@@ -22,6 +22,8 @@ DIMENSIONES_MOBILIARIO = {
     "lavadora": (0.60, 0.65),
     "secadora": (0.60, 0.65),
     "tina": (1.70, 0.75),
+    "mesa_centro": (1.00, 0.55),
+    "auto": (1.80, 4.40),
 }
 
 

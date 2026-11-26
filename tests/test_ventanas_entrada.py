@@ -67,3 +67,17 @@ def test_solo_los_patios_reciben_ventanas(hueco, es_patio, tmp_path):
     ]
 
     assert bool(hacia_dentro) is es_patio
+
+
+def test_no_se_pone_una_segunda_ventana_hacia_una_ranura(tmp_path):
+    # La sala tiene la calle delante y, a su derecha, otro ambiente a 1 m.
+    plano = construir_plano([
+        _ambiente("sala_1", 0, 0, 4, 4),
+        _ambiente("cocina_1", 5, 0, 3, 4),
+        _ambiente("comedor_1", 0, 4, 8, 3),
+    ], 10, 10, tmp_path / "p.dxf")
+
+    centros = [v["centro"] for v in _de(plano.ventanas["ventanas"], "sala_1")]
+
+    assert centros
+    assert all(x != 4 for x, _ in centros), centros

@@ -140,6 +140,14 @@ Pide «garaje» o «cochera» y se ubica en la planta baja con frente a la calle
 de al menos 2,70 × 5,00 m, con un portón de 2,40 m además de la puerta de
 entrada. Si después de un cambio ya no puede entrar un auto, el plano lo avisa.
 
+### Mobiliario
+
+Cada ambiente se amuebla solo, dejando libre el paso de las puertas: la sala
+con sofá y mesa de centro, el comedor con mesa y cuatro sillas, y el garaje con
+un auto, entre otros. En ambientes justos se acomodan de otra forma o se usan
+medidas reducidas; solo falta algo si de verdad no hay sitio. La vista 3D con **Detalle alto** añade además la
+decoración.
+
 ### Orientación al sol
 
 Indica dónde está el norte, visto desde la calle, con la opción **¿Dónde está
@@ -299,7 +307,7 @@ server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
 static/three/           # Copia fija de Three.js 0.160.0 (MIT) para la vista 3D sin internet
-tests/                  # 578 tests pytest
+tests/                  # 630 tests pytest
 ```
 
 ---

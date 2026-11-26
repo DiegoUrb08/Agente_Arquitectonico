@@ -280,6 +280,7 @@ def generar_svg_plano(
             s.append(
                 f'<rect x="{_n(px(m["x"]))}" y="{_n(py(m["y"] + m["largo"]))}" '
                 f'width="{_n(m["ancho"])}" height="{_n(m["largo"])}" '
+                f'{"rx=" + chr(34) + "0.45" + chr(34) + " " if m["tipo"] == "auto" else ""}'
                 f'fill="{MUEBLE}" fill-opacity="0.08" stroke="{MUEBLE}" '
                 f'stroke-opacity="0.6" stroke-width="0.025" class="mueble">'
                 f'<title>{escape(str(m["tipo"]).replace("_", " ").capitalize())}</title></rect>'

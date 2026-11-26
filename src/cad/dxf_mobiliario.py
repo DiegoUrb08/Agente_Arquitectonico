@@ -458,6 +458,30 @@ def dibujar_simbolo_mueble(msp, mueble):
 
 
 
+def dibujar_auto(msp, x, y, ancho, largo):
+    """Auto en planta: carrocería, parabrisas, luneta y ruedas."""
+
+    agregar_rectangulo(msp, x, y, x + ancho, y + largo)
+
+    for fraccion in (0.28, 0.40, 0.72, 0.82):
+        agregar_linea(
+            msp, x + ancho * 0.12, y + largo * fraccion,
+            x + ancho * 0.88, y + largo * fraccion,
+        )
+
+    for rueda_y in (y + largo * 0.12, y + largo * 0.74):
+        for rueda_x in (x, x + ancho * 0.9):
+            agregar_rectangulo(
+                msp, rueda_x, rueda_y,
+                rueda_x + ancho * 0.1, rueda_y + largo * 0.14,
+            )
+
+
+# Giro del bloque de una silla según el borde donde va su respaldo (el
+# símbolo lo trae arriba) y la esquina donde queda entonces su origen.
+GIRO_SILLA = {"v1": (0, 0, 0), "v0": (180, 1, 1), "u0": (90, 1, 0), "u1": (270, 0, 1)}
+
+
 def dibujar_mobiliario(
     msp,
     resultado_mobiliario
@@ -493,6 +517,8 @@ def dibujar_mobiliario(
         "lavadora": dibujar_lavadora,
         "secadora": dibujar_secadora,
         "tina": dibujar_tina,
+        "mesa_centro": dibujar_mesa,
+        "auto": dibujar_auto,
     }
 
     doc = msp.doc
@@ -537,11 +563,13 @@ def dibujar_mobiliario(
             )
 
         # Insertar el bloque en el plano.
+        giro, en_x, en_y = GIRO_SILLA.get(mueble.get("respaldo"), (0, 0, 0))
         insercion = msp.add_blockref(
             nombre_bloque,
-            insert=(x, y),
+            insert=(x + en_x * ancho, y + en_y * largo),
             dxfattribs={
-                "layer": "MOBILIARIO"
+                "layer": "MOBILIARIO",
+                "rotation": giro,
             }
         )
 

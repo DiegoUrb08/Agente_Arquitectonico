@@ -90,6 +90,10 @@ def _destino_de(puerta) -> str:
     a, b = puerta["ambiente_a"], puerta.get("ambiente_b")
     if b in (None, EXTERIOR):
         return a
+    if tipo_base(a) == "garaje":
+        return b
+    if tipo_base(b) == "garaje":
+        return a
     if tipo_base(b) in CIRCULACION and tipo_base(a) not in CIRCULACION:
         return a
     return b
@@ -353,6 +357,19 @@ def ubicar_mueble(mueble, ambientes) -> dict:
     return {"tipo": mueble["tipo"], "caja": caja, "lado": lado, "ambiente": ambiente}
 
 
+def _auto(W, D):
+    """Visto con el largo en Y: carrocería, cabina acristalada y ruedas."""
+    piezas = [
+        (0.04, W - 0.04, 0, D, 0.3, 0.8, "tela"),
+        (0.14, W - 0.14, D * 0.28, D * 0.74, 0.8, 1.3, "vidrio"),
+        (0.16, W - 0.16, D * 0.36, D * 0.66, 1.3, 1.36, "tela"),
+    ]
+    for v in (D * 0.12, D * 0.72):
+        for u in (0.0, W - 0.2):
+            piezas.append((u, u + 0.2, v, v + D * 0.15, 0.0, 0.6, "oscuro"))
+    return piezas
+
+
 def piezas_de_mueble(mueble, ambientes) -> list:
     """Piezas 3D de un mueble, orientadas según la pared que tiene detrás."""
     ubicado = ubicar_mueble(mueble, ambientes)
@@ -362,6 +379,15 @@ def piezas_de_mueble(mueble, ambientes) -> list:
     plantilla = MUEBLES.get(mueble["tipo"], lambda W, D: [
         (0, W, 0, D, 0.0, 0.75, "madera")
     ])
+
+    # El auto y las sillas no se orientan por la pared que tienen detrás.
+    if mueble["tipo"] == "auto" or "respaldo" in mueble:
+        x0, y0, x1, y1 = caja
+        W, D = x1 - x0, y1 - y0
+        mapear = lambda u, v: (x0 + u, y0 + v)
+        plantilla = _auto if mueble["tipo"] == "auto" else (
+            lambda W, D: detalle_3d._silla(0, W, 0, D, mueble["respaldo"])
+        )
 
     piezas = []
     for u0, u1, v0, v1, h0, h1, material, *forma in plantilla(W, D):

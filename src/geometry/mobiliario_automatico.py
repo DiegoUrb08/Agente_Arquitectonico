@@ -3,16 +3,32 @@ Amueblado automático: coloca el mobiliario básico de cada ambiente
 contra las paredes, sin tapar las puertas ni superponer muebles.
 """
 
-from itertools import permutations
-
 from shapely.geometry import Point, box
 
+from src.geometry.complementos import complementar, complementos_esperados
 from src.geometry.furniture_generator import construir_mobiliario
 from src.utils.texto import normalizar_nombre
 
 HOLGURA_PARED_M = 0.05
 # Medidas reducidas, solo para ambientes donde no entra la habitual.
-COMPACTAS = {"ducha": (0.70, 0.90)}
+COMPACTAS = {
+    "sofa": (1.40, 0.80),
+    "mesa_comedor": (0.90, 0.70),
+    "cama_matrimonial": (1.35, 1.90),
+    "cama_queen": (1.50, 1.90),
+    "armario": (0.90, 0.50),
+    "escritorio": (1.00, 0.50),
+    "refrigeradora": (0.60, 0.60),
+    "lavatorio": (0.45, 0.35),
+    "ducha": (0.70, 0.70),
+    "lavadora": (0.55, 0.55),
+    "secadora": (0.55, 0.55),
+}
+PASO_FINO_M = 0.05
+# Franja mínima libre ante una puerta (que entonces abriría hacia el otro lado).
+FONDO_DE_PASO_M = 0.40
+# Repartos que se prueban por ambiente y etapa antes de rendirse.
+INTENTOS_MAXIMOS = 400
 PASO_BUSQUEDA_M = 0.25
 
 # Mobiliario por tipo de ambiente. "centrado" lo coloca en el centro.
@@ -37,10 +53,11 @@ def _tipo_base(ambiente):
     return normalizar_nombre(base)
 
 
-def _zonas_de_puertas(puertas, ajustadas=False):
+def _zonas_de_puertas(puertas, ajustadas=False, fondo=None):
     """
     Zona libre de muebles ante cada puerta: holgada (un círculo de su ancho) o
     `ajustadas`, solo lo que barre la hoja: su ancho, a ambos lados del muro.
+    Con `fondo`, apenas esa franja de paso a cada lado.
     El portón de un garaje no abre hacia los ambientes.
     """
 
@@ -52,17 +69,18 @@ def _zonas_de_puertas(puertas, ajustadas=False):
         cx, cy = puerta["centro"]
         ancho = puerta["ancho"]
         medio = ancho / 2 - 0.01  # tocar el borde no estorba
+        alcance = fondo or ancho
         if not ajustadas:
             zonas.append(Point(cx, cy).buffer(ancho))
         elif puerta.get("orientacion") == "vertical":
-            zonas.append(box(cx - ancho, cy - medio, cx + ancho, cy + medio))
+            zonas.append(box(cx - alcance, cy - medio, cx + alcance, cy + medio))
         else:
-            zonas.append(box(cx - medio, cy - ancho, cx + medio, cy + ancho))
+            zonas.append(box(cx - medio, cy - alcance, cx + medio, cy + alcance))
 
     return zonas
 
 
-def _candidatos(poligono, ancho, largo, centrado):
+def _candidatos(poligono, ancho, largo, centrado, paso=PASO_BUSQUEDA_M):
     """Posiciones (x, y) a probar: centro, esquinas y luego las paredes."""
 
     xmin, ymin, xmax, ymax = poligono.bounds
@@ -96,89 +114,126 @@ def _candidatos(poligono, ancho, largo, centrado):
     while x <= xmax - ancho - g:
         yield x, ys[0]
         yield x, ys[1]
-        x += PASO_BUSQUEDA_M
+        x += paso
 
     y = ymin + g
     while y <= ymax - largo - g:
         yield xs[0], y
         yield xs[1], y
-        y += PASO_BUSQUEDA_M
+        y += paso
 
 
-def _colocar(ambiente, plantilla, zonas, compactas=False):
-    """(muebles colocados, tipos que no cupieron) para un orden de plantilla."""
+def _posiciones(ambiente, item, zonas, compactas):
+    """Muebles posibles para un elemento, del lugar preferido al menos."""
 
     poligono = ambiente["poligono"]
-    colocados = []
-    omitidos = []
+    paso = PASO_FINO_M if compactas else PASO_BUSQUEDA_M
+
+    for ancho, largo in _orientaciones(item["tipo"], compactas):
+
+        for x, y in _candidatos(
+            poligono, ancho, largo, item.get("centrado", False), paso
+        ):
+
+            geometria = box(x, y, x + ancho, y + largo)
+
+            if not poligono.covers(geometria):
+                continue
+
+            if any(geometria.intersects(z) for z in zonas):
+                continue
+
+            yield construir_mobiliario({
+                "tipo": item["tipo"],
+                "ambiente": ambiente["nombre"],
+                "x": round(x, 3),
+                "y": round(y, 3),
+                "ancho": ancho,
+                "largo": largo,
+            })
+
+
+def _repartos(ambiente, plantilla, zonas, compactas):
+    """
+    Repartos con todos los muebles: si uno no deja sitio a los siguientes, se
+    mueve y se vuelve a probar.
+    """
+
+    opciones = [
+        list(_posiciones(ambiente, item, zonas, compactas))
+        for item in plantilla
+    ]
+    if not all(opciones):
+        return
+
+    # El que tiene menos sitios posibles se coloca antes.
+    orden = sorted(range(len(plantilla)), key=lambda i: len(opciones[i]))
+    presupuesto = [INTENTOS_MAXIMOS * len(plantilla)]
+
+    def seguir(puestos):
+        if len(puestos) == len(orden):
+            yield list(puestos)
+            return
+        for mueble in opciones[orden[len(puestos)]]:
+            if presupuesto[0] <= 0:
+                return
+            if any(
+                mueble["geometria"].intersects(otro["geometria"])
+                for otro in puestos
+            ):
+                continue
+            presupuesto[0] -= 1
+            yield from seguir(puestos + [mueble])
+
+    yield from seguir([])
+
+
+def _los_que_quepan(ambiente, plantilla, zonas):
+    """Cuando no entra todo: tantos como se pueda, en el orden de la plantilla."""
+
+    colocados, omitidos = [], []
 
     for item in plantilla:
-
-        colocado = None
-
-        for ancho, largo in _orientaciones(item["tipo"], compactas):
-
-            for x, y in _candidatos(
-                poligono, ancho, largo, item.get("centrado", False)
-            ):
-
-                geometria = box(x, y, x + ancho, y + largo)
-
-                if not poligono.covers(geometria):
-                    continue
-
-                if any(
-                    geometria.intersects(otro["geometria"])
-                    for otro in colocados
-                ):
-                    continue
-
-                if any(geometria.intersects(z) for z in zonas):
-                    continue
-
-                colocado = construir_mobiliario({
-                    "tipo": item["tipo"],
-                    "ambiente": ambiente["nombre"],
-                    "x": round(x, 3),
-                    "y": round(y, 3),
-                    "ancho": ancho,
-                    "largo": largo,
-                })
-                break
-
-            if colocado:
-                break
-
-        if colocado:
-            colocados.append(colocado)
+        mueble = next((
+            m for m in _posiciones(ambiente, item, zonas, True)
+            if not any(m["geometria"].intersects(o["geometria"]) for o in colocados)
+        ), None)
+        if mueble:
+            colocados.append(mueble)
         else:
             omitidos.append(item["tipo"])
 
     return colocados, omitidos
 
 
-def _amueblar_ambiente(ambiente, plantilla, holgadas, ajustadas):
+def _amueblar_ambiente(ambiente, plantilla, etapas):
     """
-    El primer reparto en el que cabe todo: probando otros órdenes y, solo si
-    hace falta, acercándose más a las puertas y al final con medidas reducidas.
-    Si no, el que más muebles tenga.
+    (muebles, tipos que no cupieron). `etapas` va de la más holgada a la más
+    apretada; se busca el primer reparto en el que entran todos los muebles y
+    también sus complementos (sillas, mesa de centro, auto).
     """
 
-    mejor = None
-
-    etapas = [(holgadas, False), (ajustadas, False)]
-    if any(item["tipo"] in COMPACTAS for item in plantilla):
-        etapas.append((ajustadas, True))
+    esperados = complementos_esperados(ambiente["id"], plantilla)
+    mejor = None  # (nº de complementos, muebles con complementos)
 
     for zonas, compactas in etapas:
-        for orden in permutations(plantilla):
-            colocados, omitidos = _colocar(ambiente, orden, zonas, compactas)
-            if not omitidos:
-                return colocados, omitidos
-            if mejor is None or len(colocados) > len(mejor[0]):
-                mejor = colocados, omitidos
+        for probados, reparto in enumerate(
+            _repartos(ambiente, plantilla, zonas, compactas)
+        ):
+            extra = complementar(ambiente, reparto, zonas)
+            if len(extra) >= esperados:
+                return reparto + extra, []
+            if mejor is None or len(extra) > mejor[0]:
+                mejor = len(extra), reparto + extra
+            if probados >= INTENTOS_MAXIMOS:
+                break
 
-    return mejor
+    if mejor is not None:
+        return mejor[1], []
+
+    zonas = etapas[-1][0]
+    colocados, omitidos = _los_que_quepan(ambiente, plantilla, zonas)
+    return colocados + complementar(ambiente, colocados, zonas), omitidos
 
 
 def amueblar_automaticamente(resultado_geometrias, resultado_puertas=None):
@@ -189,6 +244,13 @@ def amueblar_automaticamente(resultado_geometrias, resultado_puertas=None):
 
     holgadas = _zonas_de_puertas(resultado_puertas)
     ajustadas = _zonas_de_puertas(resultado_puertas, ajustadas=True)
+    de_paso = _zonas_de_puertas(
+        resultado_puertas, ajustadas=True, fondo=FONDO_DE_PASO_M
+    )
+    etapas = [
+        (holgadas, False), (ajustadas, False), (ajustadas, True),
+        (de_paso, True),
+    ]
     colocados = []
     omitidos = []
 
@@ -196,12 +258,7 @@ def amueblar_automaticamente(resultado_geometrias, resultado_puertas=None):
 
         plantilla = PLANTILLAS.get(_tipo_base(ambiente), [])
 
-        if not plantilla:
-            continue
-
-        del_ambiente, faltan = _amueblar_ambiente(
-            ambiente, plantilla, holgadas, ajustadas
-        )
+        del_ambiente, faltan = _amueblar_ambiente(ambiente, plantilla, etapas)
         colocados.extend(del_ambiente)
         omitidos.extend(f"{tipo} en {ambiente['id']}" for tipo in faltan)
 
