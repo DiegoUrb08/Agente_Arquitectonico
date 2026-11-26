@@ -83,6 +83,24 @@ renombrar por chat. Las formas irregulares se aproximan a rectángulos, y
 muros, puertas, ventanas y muebles se dibujan de nuevo. Dos grupos de
 habitaciones separados se toman como planta baja y alta. No admite DWG.
 
+### Guardar y retomar un proyecto
+
+Con el autoguardado activado (`AUTOGUARDADO=1` en `.env`), cada proyecto se
+guarda solo, tras cada cambio, en la carpeta `proyectos/` de tu equipo. La
+pantalla de inicio los lista en **Mis proyectos** para abrirlos
+(con la conversación y todas las versiones, así «Deshacer» sigue funcionando)
+o borrarlos. **Guardar en archivo** descarga un `.proyecto.json` para llevarlo
+a otro equipo y se abre con «Importar un proyecto guardado».
+
+El archivo guarda los ambientes de cada versión; muros, puertas, ventanas y
+muebles se vuelven a calcular al abrirlo, así que reabrir tarda más cuantas más
+versiones tenga (unos 3 s con 30).
+
+> El autoguardado viene **desactivado**: quien pueda abrir la app vería y
+> podría borrar los proyectos de «Mis proyectos». Actívalo con
+> `AUTOGUARDADO=1` solo en tu equipo. «Guardar en archivo» siempre está
+> disponible.
+
 ## Reglas de distribución
 
 Se aplican aunque no las pidas; lo que pidas expresamente (p. ej. qué ambientes
@@ -212,6 +230,8 @@ Copia `.env.example` a `.env` y edita lo que necesites.
 | `PROXY_ACCESS_TOKEN` | Token de acceso al proxy (opcional) | — |
 | `ANTHROPIC_API_KEY` | Clave de la API de Anthropic | — |
 | `LLM_CLAUDE_MODEL` | Modelo Claude a usar | `claude-opus-5-5` |
+| `AUTOGUARDADO` | `1` activa el guardado automático y «Mis proyectos» | `0` |
+| `AGENTE_PROYECTOS_DIR` | Carpeta de los proyectos guardados | `proyectos/` |
 
 ---
 
@@ -246,7 +266,7 @@ server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
 static/three/           # Copia fija de Three.js 0.160.0 (MIT) para la vista 3D sin internet
-tests/                  # 460 tests pytest
+tests/                  # 499 tests pytest
 ```
 
 ---

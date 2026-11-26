@@ -28,3 +28,6 @@ desktop.ini
 
 # Resultados generados
 output/
+
+# Proyectos autoguardados por la app
+/proyectos/

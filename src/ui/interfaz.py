@@ -2,7 +2,9 @@
 
 import logging
 import os
+import re
 import traceback
+from datetime import datetime
 
 import streamlit as st
 
@@ -11,6 +13,7 @@ from src.ai.interpreter import interpretar_instruccion
 from src.ai.ollama_client import OllamaError
 from src.ai.providers import LLMProviderError
 from src.bim.ifc import generar_ifc
+from src.ui import almacen, guardado
 from src.ui import proyecto as pry
 from src.ui.resultados import mostrar_resultado
 from src.ui.tema import aplicar_tema
@@ -56,6 +59,43 @@ def mostrar_error(error: Exception):
 
 
 # ============================================================
+# GUARDADO
+# ============================================================
+
+def _autoguardar(proyecto: dict) -> None:
+    """Guarda en este equipo; un fallo de disco no interrumpe el trabajo."""
+
+    try:
+        almacen.guardar(proyecto)
+    except (OSError, ValueError) as error:
+        logger.warning("No se pudo autoguardar", exc_info=error)
+        st.session_state["aviso_guardado"] = (
+            f"No se pudo guardar el proyecto en este equipo ({error}). "
+            "Usa «Guardar en archivo»."
+        )
+    else:
+        st.session_state.pop("aviso_guardado", None)
+
+
+def _entrar(proyecto: dict) -> None:
+    st.session_state.pop("aviso_guardado", None)
+    st.session_state.pop("por_borrar", None)
+    st.session_state["proyecto"] = proyecto
+
+
+def _nombre_de_archivo(proyecto: dict) -> str:
+    nombre = re.sub(r"[^\w-]+", "_", proyecto.get("nombre", "")).strip("_")
+    return (nombre or "proyecto") + guardado.EXTENSION
+
+
+def _fecha(texto: str) -> str:
+    try:
+        return datetime.fromisoformat(texto).strftime("%d/%m/%Y %H:%M")
+    except ValueError:
+        return "sin fecha"
+
+
+# ============================================================
 # INICIO: describir un proyecto o abrir un plano existente
 # ============================================================
 
@@ -90,7 +130,8 @@ def _generar(instruccion: str) -> None:
         mostrar_error(error)
         return
 
-    st.session_state["proyecto"] = proyecto
+    _entrar(proyecto)
+    _autoguardar(proyecto)
     st.rerun()
 
 
@@ -104,8 +145,110 @@ def _abrir(archivo) -> None:
         mostrar_error(error)
         return
 
-    st.session_state["proyecto"] = proyecto
+    _entrar(proyecto)
+    _autoguardar(proyecto)
     st.rerun()
+
+
+def _recuperar(cargar, guardar: bool) -> None:
+    """Abre un proyecto guardado (`cargar` recibe el callback de progreso)."""
+
+    try:
+        with st.status("Abriendo el proyecto...", expanded=False) as estado:
+            proyecto = cargar(lambda m: estado.update(label=m))
+            estado.update(label="Proyecto abierto", state="complete")
+
+    except Exception as error:  # límite de la UI
+        mostrar_error(error)
+        return
+
+    _entrar(proyecto)
+    if guardar:
+        _autoguardar(proyecto)
+    st.rerun()
+
+
+def _importar_proyecto() -> None:
+
+    with st.expander("Importar un proyecto guardado en un archivo"):
+        archivo = st.file_uploader(
+            "Subir proyecto (.json)", type=["json"], key="archivo_proyecto"
+        )
+        if archivo is not None and st.button("Importar proyecto"):
+            _recuperar(
+                lambda progreso: guardado.importar(archivo.getvalue(), progreso),
+                guardar=True,
+            )
+
+
+def _mis_proyectos() -> None:
+
+    proyectos, danados = almacen.listar()
+
+    if not proyectos and not danados:
+        return
+
+    st.subheader("Mis proyectos")
+
+    if danados:
+        st.caption(
+            f"{danados} archivo(s) de `{almacen.carpeta()}` no se pudieron leer."
+        )
+
+    if not proyectos:
+        return
+
+    por_id = {p["id"]: p for p in proyectos}
+
+    def etiqueta(identificador):
+        p = por_id[identificador]
+        return (
+            f"{p['nombre']} · {_fecha(p['modificado'])} · "
+            f"versión {p['versiones']}"
+        )
+
+    elegido = st.selectbox(
+        "Proyecto guardado en este equipo",
+        list(por_id),
+        format_func=etiqueta,
+        key="proyecto_guardado",
+    )
+
+    c_abrir, c_borrar = st.columns(2)
+
+    if c_abrir.button("Abrir proyecto", width="stretch"):
+        _recuperar(
+            lambda progreso: almacen.abrir(elegido, progreso), guardar=False
+        )
+
+    if c_borrar.button("Borrar proyecto", width="stretch"):
+        st.session_state["por_borrar"] = elegido
+
+    # La confirmación solo vale para el proyecto que sigue elegido.
+    if st.session_state.get("por_borrar") != elegido:
+        return
+
+    st.warning(f"¿Borrar «{por_id[elegido]['nombre']}»? No se puede deshacer.")
+    c_si, c_no = st.columns(2)
+
+    # Con callbacks, la lista ya sale actualizada en la misma ejecución.
+    c_si.button(
+        "Sí, borrar", on_click=_borrar, args=(elegido,), width="stretch"
+    )
+    c_no.button(
+        "Cancelar",
+        on_click=st.session_state.pop,
+        args=("por_borrar", None),
+        width="stretch",
+    )
+
+
+def _borrar(identificador: str) -> None:
+    st.session_state.pop("por_borrar", None)
+    try:
+        almacen.borrar(identificador)
+    except OSError as error:
+        mostrar_error(error)
 
 
 EJEMPLOS = {
@@ -166,6 +309,9 @@ def inicio() -> None:
         if archivo is not None and st.button("Abrir plano"):
             _abrir(archivo)
 
+    _importar_proyecto()
+    _mis_proyectos()
+
 
 # ============================================================
 # ESPACIO DE TRABAJO: conversación + plano
@@ -222,6 +368,25 @@ def espacio_de_trabajo(proyecto: dict) -> None:
         )
         nuevo = c_nuevo.button("Nuevo proyecto", width="stretch")
         st.caption(f"Versión {versiones}: {actual['etiqueta']}")
+        st.download_button(
+            "Guardar en archivo",
+            # Se genera al pulsar, con lo que haya en ese momento.
+            data=lambda: guardado.exportar(proyecto),
+            file_name=_nombre_de_archivo(proyecto),
+            mime="application/json",
+            on_click="ignore",
+            width="stretch",
+            help="Proyecto completo (conversación y versiones) para retomarlo "
+                 "después o en otro equipo.",
+        )
+        if "aviso_guardado" in st.session_state:
+            st.warning(st.session_state["aviso_guardado"])
+        elif almacen.activo():
+            st.caption("Se guarda automáticamente en este equipo.")
+        else:
+            st.caption(
+                "Guardado automático desactivado (AUTOGUARDADO=1 en .env lo activa)."
+            )
 
     if nuevo:
         st.session_state.pop("proyecto", None)
@@ -229,10 +394,12 @@ def espacio_de_trabajo(proyecto: dict) -> None:
 
     if deshacer:
         pry.deshacer(proyecto)
+        _autoguardar(proyecto)
         st.rerun()
 
     if entrada:
         _refinar(proyecto, entrada, caja)
+        _autoguardar(proyecto)
         st.rerun()
 
     with caja:

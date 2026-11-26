@@ -374,6 +374,13 @@ Límites:
 - La escalera no se puede mover ni redimensionar, y se dibuja sin recorrido ni hueco en la losa.
 - No se puede crear ni eliminar una planta por chat.
 
+## Guardar y retomar proyectos — ✅ IMPLEMENTADO (2026-11-26)
+- `src/ui/guardado.py`: archivo JSON (`.proyecto.json`) con requerimientos, conversación y, por versión, terreno, ambientes, notas y avisos. Muros, puertas, ventanas, muebles, DXF y CSV se reconstruyen. No se guardan las trazas de error. Validado con pydantic (formato, versión, tamaño máximo 5 MB, hasta 500 versiones); nunca pickle.
+- `src/ui/almacen.py`: autoguardado en `proyectos/` (ignorada por git) tras cada cambio, con escritura atómica y reintentos por bloqueos de OneDrive. Desactivado por defecto; `AUTOGUARDADO=1` lo activa y `AGENTE_PROYECTOS_DIR` cambia la carpeta.
+- Interfaz: «Mis proyectos» (abrir; borrar con confirmación), «Importar un proyecto guardado» y «Guardar en archivo». Importar crea un proyecto nuevo, sin pisar otro.
+- Medido con proyectos reales (Groq) de una y dos plantas: reconstrucción idéntica; 10–14 KB con 4 versiones; guardar 4 ms; abrir 0,4–0,6 s con 4 versiones, 3–4 s con 30 y 9–13 s con 100; listar 52 proyectos, 0,05 s.
+- Límites: reabrir reconstruye todas las versiones (se podría hacer bajo demanda); si cambian las reglas de muros, puertas o muebles, un proyecto antiguo puede verse distinto; sin cuentas (quien abra la app ve la lista); dos pestañas sobre el mismo proyecto: gana el último cambio. Falta probar en un navegador la descarga y la importación.
+
 ## Exportación BIM
 - **Exportación BIM — ✅ IMPLEMENTADA (2026-11-26).** Botón «Modelo BIM (IFC)» junto a DXF y CSV; el archivo se genera solo al pulsarlo (descarga diferida de Streamlit). `src/bim/ifc.py` (`generar_ifc`, IfcOpenShell 0.9, obligatoria en `requirements.txt`) produce IFC4 en metros:
   - Proyecto → sitio → edificio → una planta por piso (cada 2,80 m).
@@ -392,9 +399,10 @@ Límites:
 ### Verificación manual pendiente
 - Probar el botón de pantalla completa en un navegador real.
 - Abrir un `.ifc` en Revit, ArchiCAD o BIM Vision.
+- Guardar un proyecto en archivo e importarlo desde el navegador.
+- Abrir un DXF real hecho con otro programa.
 
 ### Funcionalidad
-- Guardar y retomar proyectos (hoy se pierden al cerrar la pestaña).
 - Elegir entre varias distribuciones propuestas.
 - Ventanas: garantizar ventana en dormitorios y sala, orientación (norte), altura de alféizar; no colocarlas hacia huecos interiores.
 - Retiros del terreno y ubicación de la casa en el lote.

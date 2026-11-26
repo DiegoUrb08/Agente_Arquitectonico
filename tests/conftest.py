@@ -12,6 +12,15 @@ def compactacion_breve(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def carpeta_de_proyectos(monkeypatch, tmp_path):
+    """Los tests nunca escriben en la carpeta real de proyectos."""
+    carpeta = tmp_path / "proyectos"
+    monkeypatch.setenv("AGENTE_PROYECTOS_DIR", str(carpeta))
+    monkeypatch.setenv("AUTOGUARDADO", "1")
+    return carpeta
+
+
 @pytest.fixture
 def distribucion_simple():
     """Dos ambientes contiguos de 5x4 y 3x4 m dentro de un terreno de 10x10."""

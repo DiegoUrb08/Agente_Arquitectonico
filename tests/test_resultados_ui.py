@@ -203,3 +203,80 @@ def test_se_ofrece_el_modelo_bim(entorno):
 
     assert "Modelo BIM (IFC)" in etiquetas
     assert not at.exception
+
+
+# ---------------------------------------------------------------- guardado
+
+def test_el_proyecto_se_autoguarda_al_crear_editar_y_deshacer(entorno):
+    from src.ui import almacen
+
+    entorno.setattr("src.ui.interfaz.interpretar_edicion", _reducir)
+    at = _con_plano()
+    assert almacen.listar()[0][0]["versiones"] == 1
+
+    at.chat_input[0].set_value("reduce el dormitorio 1").run()
+    assert almacen.listar()[0][0]["versiones"] == 2
+
+    _boton(at, "Deshacer").click().run()
+    proyectos = almacen.listar()[0]
+    assert len(proyectos) == 1 and proyectos[0]["versiones"] == 1
+    assert any(
+        b.proto.label == "Guardar en archivo" for b in at.get("download_button")
+    )
+
+
+def test_se_retoma_un_proyecto_de_la_lista(entorno):
+    entorno.setattr("src.ui.interfaz.interpretar_edicion", _reducir)
+    at = _con_plano()
+    at.chat_input[0].set_value("reduce el dormitorio 1").run()
+
+    nuevo = _abrir()
+    opcion = nuevo.selectbox[0].options[0]
+    assert "terreno de 10 x 20" in opcion and "versión 2" in opcion
+
+    _boton(nuevo, "Abrir proyecto").click().run()
+
+    assert not nuevo.exception
+    assert _version(nuevo).startswith("Versión 2")
+    _boton(nuevo, "Deshacer").click().run()
+    assert _version(nuevo).startswith("Versión 1")
+
+
+def test_borrar_un_proyecto_pide_confirmacion(entorno):
+    from src.ui import almacen
+
+    at = _con_plano()
+    _boton(at, "Nuevo proyecto").click().run()
+
+    _boton(at, "Borrar proyecto").click().run()
+    assert len(almacen.listar()[0]) == 1
+    _boton(at, "Cancelar").click().run()
+    assert len(almacen.listar()[0]) == 1
+    assert not [b for b in at.button if b.label == "Sí, borrar"]
+
+    _boton(at, "Borrar proyecto").click().run()
+    _boton(at, "Sí, borrar").click().run()
+
+    assert not at.exception
+    assert almacen.listar() == ([], 0)
+    assert not at.selectbox
+
+
+def test_si_no_se_puede_guardar_se_avisa_y_se_sigue(entorno):
+    def fallar(proyecto):
+        raise PermissionError("carpeta bloqueada")
+
+    entorno.setattr("src.ui.almacen.guardar", fallar)
+    at = _con_plano()
+
+    assert not at.exception
+    assert _version(at).startswith("Versión 1")
+    assert any("No se pudo guardar" in w.value for w in at.warning)
+
+
+def test_sin_autoguardado_no_hay_lista(entorno):
+    entorno.setenv("AUTOGUARDADO", "0")
+    at = _con_plano()
+    _boton(at, "Nuevo proyecto").click().run()
+
+    assert not at.selectbox

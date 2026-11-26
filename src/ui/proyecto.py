@@ -170,10 +170,19 @@ def _invitacion(resultado) -> str:
     return AYUDA + (AYUDA_PLANTAS if len(pisos_de(resultado)) > 1 else "")
 
 
+def _nombre_corto(texto: str, maximo: int = 60) -> str:
+    """Título del proyecto a partir de su descripción o archivo."""
+    limpio = " ".join(texto.split()).rstrip(".")
+    if len(limpio) > maximo:
+        limpio = limpio[:maximo].rsplit(" ", 1)[0] + "…"
+    return limpio or "Proyecto"
+
+
 def proyecto_inicial(requerimientos, texto: str, resultado, dxf: bytes) -> dict:
     """Proyecto con un plano ya generado como versión 1."""
 
     return {
+        "nombre": _nombre_corto(texto),
         "requerimientos": requerimientos,
         "versiones": [_version(resultado, dxf, "Plano inicial")],
         "mensajes": [
@@ -215,6 +224,7 @@ def abrir_proyecto(dxf: bytes, nombre_archivo: str, progreso=None) -> dict:
         regenerado = salida.read_bytes()
 
     return {
+        "nombre": _nombre_corto(Path(nombre_archivo).stem),
         "requerimientos": None,
         "versiones": [_version(resultado, regenerado, "Plano abierto")],
         "mensajes": [
