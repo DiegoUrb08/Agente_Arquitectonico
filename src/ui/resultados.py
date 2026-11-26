@@ -5,6 +5,7 @@ from html import escape
 import streamlit as st
 
 from src.ui.escena_3d import documento_3d, generar_escena_3d
+from src.ui.pantalla_completa import documento_svg
 from src.ui.proyecto import dimensiones_terreno, pisos_de
 from src.ui.plano_svg import (
     color_de_ambiente,
@@ -87,14 +88,8 @@ def _mostrar_svg(piso, capas, clave: str, enfocar: bool, cambiados) -> None:
         enfocar=enfocar,
         resaltar=cambiados,
     )
-    documento = (
-        '<!doctype html><html><head><meta charset="utf-8">'
-        "<style>html,body{height:100%;margin:0;overflow:hidden;"
-        "background:transparent}</style></head>"
-        f"<body>{svg}</body></html>"
-    )
     altura = int(max(360, min(780, 640 * proporcion_vista(piso, enfocar))))
-    st.iframe(documento, height=altura)
+    st.iframe(documento_svg(svg), height=altura)
 
 
 def _mostrar_3d(piso, capas, clave: str, cambiados, detalle: bool) -> None:

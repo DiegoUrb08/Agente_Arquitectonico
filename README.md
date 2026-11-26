@@ -36,6 +36,8 @@ asistente que crea el archivo `.env` por ti.
    para añadir decoración (sillas, veladores, alfombras, TV, plantas…), suelos
    de madera y cerámica, marcos, zócalos e iluminación realista; puede ir más
    lento en equipos modestos. Funciona sin internet.
+   El botón **Pantalla completa** de cada visor (2D o 3D) lo amplía a toda la
+   pantalla; sales con el mismo botón o con Esc.
 3. **Pídele cambios en la conversación**: *«reduce el comedor a 8 m²»* o
    *«pon la cocina al lado del dormitorio»*. Cada cambio crea una
    versión nueva, resalta en el plano lo que cambió y puedes **deshacerlo**.
@@ -210,7 +212,7 @@ server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
 static/three/           # Copia fija de Three.js 0.160.0 (MIT) para la vista 3D sin internet
-tests/                  # 381 tests pytest
+tests/                  # 386 tests pytest
 ```
 
 ---

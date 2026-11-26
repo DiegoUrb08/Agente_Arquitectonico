@@ -318,8 +318,12 @@ Selector «Plano 2D / Vista 3D» en la pestaña Plano; las capas (etiquetas, pue
 
 Limitaciones: una planta a la vez (sin apilar); sin techos ni exportación; muebles y decoración son volúmenes simples. La decoración solo aparece donde cabe: en planos compactos (camas en esquina, puertas frente al sofá) puede faltar el velador o el TV. El mobiliario del plano a veces no incluye el sofá de la sala (ya ocurría antes).
 
-### 3. Modo pantalla completa
-Poder ver el plano (y, cuando exista, la vista 3D) a pantalla completa.
+### 3. Modo pantalla completa — ✅ IMPLEMENTADA (2026-11-25)
+Botón «Pantalla completa» dentro de los visores 2D y 3D (`src/ui/pantalla_completa.py`, compartido). Usa la Fullscreen API sobre el documento del iframe, que Streamlit permite (`allow="fullscreen"`); el texto cambia a «Salir de pantalla completa (Esc)» y el botón se oculta si el navegador no lo admite. El 3D se redimensiona al salir y entrar; el 2D ocupa todo el alto con el fondo del tema.
+
+Verificación: tests del HTML y prueba en la app con la API simulada (cambio de texto, `aria-pressed`, lienzo 3D a 1400×900). El navegador automatizado no concede pantalla completa real (ni en una página mínima, con o sin ventana), así que falta probar el botón a mano.
+
+De paso: en `documento_3d` la escena se inserta la última, para que ningún texto suyo pueda contener un marcador que se reemplace después (test incluido).
 
 ## Acciones pendientes (priorizadas) — revisión 2026-11-24
 

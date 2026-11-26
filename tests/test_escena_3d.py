@@ -250,3 +250,14 @@ def test_la_app_sirve_los_estaticos_como_javascript():
     config = tomllib.loads((RAIZ / ".streamlit" / "config.toml").read_text(encoding="utf-8"))
     assert config["server"]["enableStaticServing"] is True
     assert mimetypes.guess_type("three.module.min.js")[0] == "text/javascript"
+
+
+def test_un_texto_con_marcadores_no_inyecta_html():
+    """La escena se inserta la última: sus textos no se reemplazan después."""
+    texto = "__PANTALLA_COMPLETA__ __UID__"
+
+    pagina = documento_3d({"t": texto}, uid="u")
+
+    datos = re.search(r'id="escena">(.*?)</script>', pagina, re.S).group(1)
+    assert json.loads(datos) == {"t": texto}
+    assert pagina.count('id="pantalla-completa"') == 1

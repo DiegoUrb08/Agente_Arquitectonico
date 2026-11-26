@@ -12,6 +12,7 @@ from shapely.geometry import Point
 
 from src.geometry.opening_generator import construir_abertura
 from src.ui import detalle_3d
+from src.ui.pantalla_completa import BOTON as BOTON_PANTALLA_COMPLETA
 from src.planning.reglas_acceso import CIRCULACION, EXTERIOR, tipo_base
 from src.ui.plano_svg import (
     CAPAS_POR_DEFECTO,
@@ -471,6 +472,9 @@ def documento_3d(escena: dict, uid: str = "plano") -> str:
     plantilla = PLANTILLA.read_text(encoding="utf-8")
     return (
         plantilla
-        .replace("__ESCENA__", json_seguro(escena))
+        .replace("__PANTALLA_COMPLETA__", BOTON_PANTALLA_COMPLETA)
         .replace("__UID__", json_seguro(uid))
+        # La escena (con textos del usuario) va al final: así ningún nombre
+        # puede contener un marcador que se reemplace después.
+        .replace("__ESCENA__", json_seguro(escena))
     )
