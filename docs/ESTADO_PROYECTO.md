@@ -344,4 +344,14 @@ De paso: en `documento_3d` la escena se inserta la última, para que ningún tex
 - En distribuciones compactas, `modificar_area` y `mover_ambiente` rechazan cambios por falta de espacio.
 
 ### Nuevas funciones
-- **Exportación BIM** (IfcOpenShell o gbXML). Etapa planeada desde el inicio del proyecto; sin iniciar.
+- **Exportación BIM — ✅ IMPLEMENTADA (2026-11-26).** Botón «Modelo BIM (IFC)» junto a DXF y CSV; el archivo se genera solo al pulsarlo (descarga diferida de Streamlit). `src/bim/ifc.py` (`generar_ifc`, IfcOpenShell 0.9, obligatoria en `requirements.txt`) produce IFC4 en metros:
+  - Proyecto → sitio → edificio → una planta por piso (cada 2,80 m).
+  - IfcSpace por ambiente (nombre, área en `Qto_SpaceBaseQuantities`).
+  - IfcWall por tramo recto: exteriores de 0,20 m e interiores de 0,15 m (`Pset_WallCommon.IsExternal`).
+  - IfcOpeningElement + IfcDoor/IfcWindow con las medidas de la vista 3D; la entrada con `Pset_DoorCommon.IsExternal`.
+  - IfcSlab de piso por planta.
+  - Mobiliario como IfcFurniture y sanitarios como IfcSanitaryTerminal (TOILETPAN, WASHHANDBASIN, SHOWER, BATH).
+
+  Verificado: pasa `ifcopenshell.validate` (incluidas las reglas EXPRESS) en el plano fijo y en tres planos reales (uno de dos plantas), toda la geometría se procesa con `ifcopenshell.geom`, cada carpintería llena su vano y la descarga real desde la app abre como IFC4. Se exporta en menos de 1 s. Hallazgo: `unit.assign_unit` usa milímetros por defecto y las carpinterías salían a escala 1:10; ahora se fijan metros y un test lo comprueba.
+
+  Límites: sin materiales ni capas de muro, cubierta, IfcStair ni límites de espacio (IfcRelSpaceBoundary); muebles como cajas; en dos plantas cada una se optimiza por separado, así que pueden no coincidir los contornos. Falta abrirlo en Revit o ArchiCAD reales.

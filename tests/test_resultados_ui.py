@@ -202,3 +202,12 @@ def test_el_detalle_alto_es_opcional(entorno):
     detalle.set_value(True).run()
 
     assert not at.exception
+
+
+def test_se_ofrece_el_modelo_bim(entorno):
+    at = _con_plano()
+
+    etiquetas = [b.proto.label for b in at.get("download_button")]
+
+    assert "Modelo BIM (IFC)" in etiquetas
+    assert not at.exception

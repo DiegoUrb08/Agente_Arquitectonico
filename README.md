@@ -12,7 +12,7 @@ Escribe "vivienda de 10×20 m con 2 dormitorios, sala y cocina" y obtén el plan
 git clone https://github.com/DiegoUrb08/Agente_Arquitectonico.git
 cd Agente_Arquitectonico
 
-# 2. Instala las dependencias
+# 2. Instala las dependencias (Python 3.10 a 3.14, de 64 bits)
 pip install -r requirements.txt
 
 # 3. Arranca (la primera vez te guía para elegir un proveedor)
@@ -41,8 +41,10 @@ asistente que crea el archivo `.env` por ti.
 3. **Pídele cambios en la conversación**: *«reduce el comedor a 8 m²»* o
    *«pon la cocina al lado del dormitorio»*. Cada cambio crea una
    versión nueva, resalta en el plano lo que cambió y puedes **deshacerlo**.
-4. **Descarga** el plano en DXF (AutoCAD, LibreCAD...), una imagen en SVG y el
-   cuadro de áreas en CSV.
+4. **Descarga** el plano en DXF (AutoCAD, LibreCAD...), una imagen en SVG, el
+   cuadro de áreas en CSV y el **modelo BIM en IFC4** (espacios, muros, puertas,
+   ventanas, losa y mobiliario), que se abre en Revit 2020+, ArchiCAD 23+,
+   BlenderBIM o visores gratuitos como BIM Vision.
 
 Por ahora los cambios admitidos son cambiar el área de un ambiente y moverlo
 respecto a otro, y solo en planos de una planta. Al reubicar, o al ampliar sin
@@ -207,12 +209,13 @@ src/
   geometry/             # Geometría Shapely (muros, puertas, ventanas)
   cad/                  # Generación y edición de DXF (ezdxf)
   services/             # Pipeline completo: LLM → optimizador → DXF
+  bim/                  # Exportación a IFC4 (IfcOpenShell)
   ui/                   # Interfaz Streamlit: tema blueprint, vista previa SVG del plano
 server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
 static/three/           # Copia fija de Three.js 0.160.0 (MIT) para la vista 3D sin internet
-tests/                  # 386 tests pytest
+tests/                  # 398 tests pytest
 ```
 
 ---

@@ -10,6 +10,7 @@ from src.ai.edit_interpreter import interpretar_edicion
 from src.ai.interpreter import interpretar_instruccion
 from src.ai.ollama_client import OllamaError
 from src.ai.providers import LLMProviderError
+from src.bim.ifc import generar_ifc
 from src.ui import proyecto as pry
 from src.ui.resultados import mostrar_resultado
 from src.ui.tema import aplicar_tema
@@ -240,7 +241,7 @@ def espacio_de_trabajo(proyecto: dict) -> None:
         _mostrar_mensajes(proyecto["mensajes"])
 
     with derecha:
-        descarga_dxf, descarga_csv, _ = st.columns([1, 1, 1])
+        descarga_dxf, descarga_csv, descarga_ifc = st.columns([1, 1, 1])
         descarga_dxf.download_button(
             "Descargar DXF",
             data=actual["dxf"],
@@ -257,6 +258,19 @@ def espacio_de_trabajo(proyecto: dict) -> None:
             mime="text/csv",
             on_click="ignore",
             width="stretch",
+        )
+        resultado_actual = actual["resultado"]
+        descarga_ifc.download_button(
+            "Modelo BIM (IFC)",
+            # Se genera solo al pulsar: no hace falta para ver el plano.
+            data=lambda: generar_ifc(resultado_actual),
+            file_name="modelo.ifc",
+            mime="application/x-step",
+            on_click="ignore",
+            width="stretch",
+            help="Modelo IFC4 con espacios, muros, puertas, ventanas, losa y "
+                 "mobiliario. Se abre en Revit, ArchiCAD, BlenderBIM o un "
+                 "visor gratuito como BIM Vision.",
         )
 
         mostrar_resultado(
