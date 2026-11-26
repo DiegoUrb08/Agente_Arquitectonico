@@ -12,8 +12,11 @@ from src.ai.edit_interpreter import EditOperation, EditRequest
 from src.cad.dxf_editor import cargar_y_editar, distribucion_desde_ambientes
 from src.cad.dxf_generator import generar_dxf_desde_geometrias
 from src.geometry.geometry_generator import generar_geometrias
+from src.models.requirements import Retiros
+from src.planning.garaje import como_se_llama
 from src.planning.layout_optimizer import ESCALERA, contorno
 from src.planning.reglas_acceso import tipo_base
+from src.planning.retiros import area_edificable, trasladar
 from src.services.pipeline import construir_multipisos
 from src.utils.texto import normalizar_nombre
 
@@ -22,7 +25,10 @@ PLANTAS = ("baja", "alta")
 
 def _coincidentes(distribucion, texto) -> list[dict]:
     """Ambientes de una planta que responden a "dormitorio 2" o "baño"."""
-    clave = normalizar_nombre(texto)
+    clave = como_se_llama(
+        normalizar_nombre(texto),
+        [normalizar_nombre(a["nombre"]) for a in distribucion],
+    )
     por_id = [
         a for a in distribucion
         if normalizar_nombre(a["id"]) == clave.replace(" ", "_")
@@ -33,7 +39,10 @@ def _coincidentes(distribucion, texto) -> list[dict]:
 
 
 def _plantas_con(distribuciones, texto, planta=None) -> list[int]:
-    clave = normalizar_nombre(texto).replace(" ", "_")
+    clave = como_se_llama(
+        normalizar_nombre(texto),
+        [normalizar_nombre(a["nombre"]) for d in distribuciones for a in d],
+    ).replace(" ", "_")
     exactas = [
         i for i, d in enumerate(distribuciones)
         if any(normalizar_nombre(a["id"]) == clave for a in d)
@@ -180,14 +189,22 @@ def _aplicar(distribuciones, operacion, terreno, norte=None):
 
 
 def editar_plano_multipisos(
-    resultado, ruta_salida, solicitud, progreso=None, norte=None
+    resultado, ruta_salida, solicitud, progreso=None, norte=None,
+    retiros=None,
 ) -> dict:
     """
     Como `pipeline.editar_plano`, pero sobre un `ResultadoPlanoMultipisos`.
     """
     minx, miny, maxx, maxy = resultado.pisos[0].geometrias["terreno"].bounds
     terreno = (round(maxx - minx, 3), round(maxy - miny, 3))
-    distribuciones = [list(p.distribucion) for p in resultado.pisos]
+    # Se edita dentro de los retiros y al final se devuelve a su sitio.
+    retiros = retiros or Retiros()
+    completo = terreno
+    terreno = area_edificable(*completo, retiros)
+    distribuciones = [
+        trasladar(p.distribucion, -retiros.izquierdo, -retiros.frontal)
+        for p in resultado.pisos
+    ]
     modificaciones = []
 
     for operacion in solicitud.operaciones:
@@ -196,8 +213,11 @@ def editar_plano_multipisos(
         )
         modificaciones.append(hecho)
 
+    distribuciones = [
+        trasladar(d, retiros.izquierdo, retiros.frontal) for d in distribuciones
+    ]
     plano = construir_multipisos(
-        distribuciones, *terreno, ruta_salida, progreso
+        distribuciones, *completo, ruta_salida, progreso
     )
 
     return {

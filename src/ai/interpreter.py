@@ -3,6 +3,7 @@ import json
 import re
 
 from src.planning.orientacion import detectar_norte
+from src.planning.retiros import detectar_retiros
 from src.models.requirements import RequerimientosArquitectonicos
 
 from src.models.defaults import (
@@ -235,9 +236,10 @@ No agregues explicaciones antes ni despues.
     # 1.4 VALIDACION CON PYDANTIC
     # --------------------------------------------------------
 
-    # El norte no se le pide al modelo: se lee del texto más abajo.
+    # El norte y los retiros no se piden al modelo: se leen del texto.
     if isinstance(datos, dict):
         datos.pop("norte", None)
+        datos.pop("retiros", None)
 
     try:
 
@@ -268,6 +270,7 @@ No agregues explicaciones antes ni despues.
             setattr(requerimientos, clave, valor)
 
     requerimientos.norte = detectar_norte(instruccion)
+    requerimientos.retiros = detectar_retiros(instruccion)
 
     # --------------------------------------------------------
     # 2. COMPLETAR DIMENSIONES DEL TERRENO

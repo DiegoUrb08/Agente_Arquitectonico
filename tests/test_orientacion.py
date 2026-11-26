@@ -132,7 +132,7 @@ def test_las_ediciones_reciben_el_norte(tmp_path, monkeypatch):
     )
     recibido = {}
 
-    def editar(entrada, salida, solicitud, norte=None):
+    def editar(entrada, salida, solicitud, norte=None, retiros=None):
         recibido["norte"] = norte
         raise ValueError("basta")
 

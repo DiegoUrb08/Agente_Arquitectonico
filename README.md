@@ -101,6 +101,10 @@ versiones tenga (unos 3 s con 30).
 > `AUTOGUARDADO=1` solo en tu equipo. «Guardar en archivo» siempre está
 > disponible.
 
+El ejemplo **Proyecto completo** de la pantalla de inicio reúne en una sola
+generación dos plantas, garaje, retiro frontal, orientación al sol y
+mobiliario.
+
 ## Reglas de distribución
 
 Se aplican aunque no las pidas; lo que pidas expresamente (p. ej. qué ambientes
@@ -120,6 +124,21 @@ van juntos) tiene prioridad.
 - Las ventanas van centradas en las paredes exteriores o junto a la puerta; en
   una fachada angosta la entrada se corre a un lado para que quepan ambas. A un
   hueco entre ambientes solo dan si es un patio (4 m² y 1,5 m de ancho).
+
+### Retiros y ubicación en el lote
+
+La casa se coloca **al frente y centrada** a lo ancho. Si tu municipio exige
+retiros, escríbelos en **Retiros del terreno** (frontal, posterior, izquierdo y
+derecho, vistos desde la calle) o en la descripción («retiro frontal de 3 m»,
+«retiros laterales de 1 m»). No se aplica ninguno si no lo indicas. Los cambios
+por chat tampoco los invaden, y la vista 2D marca su límite con una línea
+discontinua.
+
+### Garaje
+
+Pide «garaje» o «cochera» y se ubica en la planta baja con frente a la calle,
+de al menos 2,70 × 5,00 m, con un portón de 2,40 m además de la puerta de
+entrada. Si después de un cambio ya no puede entrar un auto, el plano lo avisa.
 
 ### Orientación al sol
 
@@ -280,7 +299,7 @@ server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
 static/three/           # Copia fija de Three.js 0.160.0 (MIT) para la vista 3D sin internet
-tests/                  # 530 tests pytest
+tests/                  # 578 tests pytest
 ```
 
 ---

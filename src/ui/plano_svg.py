@@ -159,6 +159,7 @@ def generar_svg_plano(
     resaltar=frozenset(),
     fondo_pagina: bool = False,
     norte: str | None = None,
+    retiros: dict | None = None,
 ) -> str:
     """SVG del plano de un piso (`ResultadoPlano`).
 
@@ -171,6 +172,7 @@ def generar_svg_plano(
     `resaltar` son los ids de ambientes que cambiaron (capa "cambios").
     `fondo_pagina` añade un fondo sólido, para guardar el SVG como archivo.
     `norte` (lado del terreno donde está) dibuja la flecha de norte.
+    `retiros` ({frontal, posterior, izquierdo, derecho}) marca el área edificable.
     """
     minx, miny, maxx, maxy = _marco(resultado, enfocar)
     ancho = maxx - minx
@@ -229,6 +231,17 @@ def generar_svg_plano(
         f'<rect {terreno} fill="none" '
         f'stroke="{LIMITE_TERRENO}" stroke-width="0.05" stroke-dasharray="0.3 0.2"/>',
     ]
+
+    if retiros and any(retiros.values()):
+        s.append(
+            f'<rect class="retiros" x="{_n(px(tx0 + retiros["izquierdo"]))}" '
+            f'y="{_n(py(ty1 - retiros["posterior"]))}" '
+            f'width="{_n(tx1 - tx0 - retiros["izquierdo"] - retiros["derecho"])}" '
+            f'height="{_n(ty1 - ty0 - retiros["frontal"] - retiros["posterior"])}" '
+            f'fill="none" stroke="{CAMBIO}" stroke-width="0.035" '
+            f'stroke-dasharray="0.15 0.15" stroke-opacity="0.8">'
+            f"<title>Límite de retiros</title></rect>"
+        )
 
     etiquetas = etiquetas_ambientes(resultado.distribucion)
 

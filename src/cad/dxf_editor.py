@@ -4,6 +4,7 @@ import ezdxf
 
 from shapely.geometry import Polygon, box
 
+from src.planning.garaje import como_se_llama
 from src.cad.dxf_base import (
     registrar_metadatos,
     APP_ID,
@@ -168,7 +169,10 @@ def resolver_ambiente(ambientes, referencia):
     mayusculas y tildes.
     """
 
-    clave = normalizar_nombre(referencia)
+    clave = como_se_llama(
+        normalizar_nombre(referencia),
+        [normalizar_nombre(a["nombre"]) for a in ambientes],
+    )
     clave_id = clave.replace(" ", "_")
 
     por_id = [

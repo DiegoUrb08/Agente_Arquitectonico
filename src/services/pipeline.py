@@ -5,6 +5,7 @@ requerimientos -> optimización -> validación -> geometrías -> muros
 -> puertas -> aberturas -> DXF.
 """
 
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -18,7 +19,15 @@ from src.geometry.opening_generator import generar_aberturas
 from src.geometry.wall_generator import generar_muros
 from src.geometry.window_generator import generar_ventanas_automaticas
 from src.models.distribucion import validar_esquema_distribucion
+from src.planning.garaje import avisos_de_garaje
 from src.planning.orientacion import nota_de_orientacion
+from src.planning.retiros import (
+    area_edificable,
+    nota_de_retiros,
+    reducir_al_area_edificable,
+    trasladar,
+    ubicar,
+)
 from src.planning.layout_optimizer import (
     contorno,
     optimizar_distribucion,
@@ -88,12 +97,46 @@ def generar_plano(
         return generar_plano_multipisos(requerimientos, ancho, largo, ruta_dxf, progreso)
 
     avisar("Optimizando la distribución espacial...")
-    distribucion = optimizar_distribucion(requerimientos)
+    (distribucion,) = _resolver_en_el_lote(
+        requerimientos, lambda r: [optimizar_distribucion(r)]
+    )
 
     plano = construir_plano(distribucion, ancho, largo, ruta_dxf, progreso)
     plano.notas = _notas(requerimientos, distribucion)
+    _anotar_retiros(plano, requerimientos)
     _anotar_orientacion(plano, requerimientos.norte)
     return plano
+
+
+def _resolver_en_el_lote(requerimientos, resolver) -> list:
+    """
+    Resuelve las plantas dentro de los retiros y las coloca al frente y
+    centradas en el terreno.
+    """
+    interior = reducir_al_area_edificable(requerimientos)
+    try:
+        distribuciones = resolver(interior)
+    except ValueError as error:
+        if not requerimientos.retiros:
+            raise
+        raise ValueError(
+            f"Dentro de los retiros quedan {interior.ancho_terreno_m:g} × "
+            f"{interior.largo_terreno_m:g} m. {error}"
+        ) from error
+
+    return ubicar(
+        distribuciones, requerimientos.ancho_terreno_m,
+        requerimientos.largo_terreno_m, requerimientos.retiros,
+    )
+
+
+def _anotar_retiros(plano, requerimientos) -> None:
+    retiros = requerimientos.retiros
+    if retiros and any(retiros.model_dump().values()):
+        plano.notas.append(nota_de_retiros(
+            requerimientos.ancho_terreno_m, requerimientos.largo_terreno_m,
+            retiros,
+        ))
 
 
 def _anotar_orientacion(plano, norte) -> None:
@@ -118,6 +161,8 @@ def _avisos(distribucion, puertas, validacion, ventanas, planta_baja=True) -> li
     avisos = evaluar_reglas(
         distribucion, puertas["puertas"], validacion["adyacencias"], planta_baja
     )
+    if planta_baja:
+        avisos += avisos_de_garaje(distribucion)
     sin_ventana = [
         i for i in ventanas.get("omitidos", []) if tipo_base(i) != "escalera"
     ]
@@ -257,7 +302,7 @@ def generar_plano_multipisos(
     único DXF con ellas apiladas verticalmente.
     """
 
-    distribuciones = optimizar_por_pisos(requerimientos)
+    distribuciones = _resolver_en_el_lote(requerimientos, optimizar_por_pisos)
     resultado = construir_multipisos(
         distribuciones, ancho, largo, ruta_dxf, progreso, amueblar
     )
@@ -265,6 +310,8 @@ def generar_plano_multipisos(
     for plano in resultado.pisos:
         plano.notas = _notas(requerimientos, plano.distribucion)
         _anotar_orientacion(plano, requerimientos.norte)
+
+    _anotar_retiros(resultado.pisos[0], requerimientos)
 
     resultado.pisos[0].avisos += _relaciones_entre_plantas(
         requerimientos, distribuciones
@@ -416,6 +463,7 @@ def editar_plano(
     solicitud,
     progreso: Callable[[str], None] | None = None,
     norte: str | None = None,
+    retiros=None,
 ) -> dict:
     """
     Aplica la edición sobre la distribución del DXF y regenera el plano
@@ -437,15 +485,19 @@ def editar_plano(
             "El archivo de salida debe ser diferente del archivo original."
         )
 
-    _, ambientes, terreno, resultados = cargar_y_editar(
-        entrada, solicitud, {"norte": norte}
-    )
+    if retiros and any(retiros.model_dump().values()):
+        ambientes, terreno, resultados = _editar_dentro_de_retiros(
+            entrada, solicitud, norte, retiros
+        )
+    else:
+        _, ambientes, terreno, resultados = cargar_y_editar(
+            entrada, solicitud, {"norte": norte}
+        )
+        ambientes = distribucion_desde_ambientes(ambientes)
 
     xmin, ymin, xmax, ymax = terreno.bounds
-    distribucion = distribucion_desde_ambientes(ambientes)
-
     plano = construir_plano(
-        distribucion,
+        ambientes,
         round(xmax - xmin, 3),
         round(ymax - ymin, 3),
         salida,
@@ -467,6 +519,43 @@ def editar_plano(
         "observaciones": observaciones,
         "plano": plano,
     }
+
+
+def _editar_dentro_de_retiros(entrada, solicitud, norte, retiros):
+    """
+    Edita sobre un terreno recortado a los retiros, para que ningún cambio
+    los invada. Devuelve (distribución, terreno completo, resultados).
+    """
+    from src.cad.dxf_editor import (
+        cargar_y_editar,
+        distribucion_desde_ambientes,
+    )
+
+    _, originales, terreno, _ = cargar_y_editar(entrada, None)
+    xmin, ymin, xmax, ymax = terreno.bounds
+    ancho, largo = area_edificable(
+        round(xmax - xmin, 3), round(ymax - ymin, 3), retiros
+    )
+    dentro = trasladar(
+        distribucion_desde_ambientes(originales),
+        -retiros.izquierdo, -retiros.frontal,
+    )
+
+    with tempfile.TemporaryDirectory() as carpeta:
+        ruta = Path(carpeta) / "edificable.dxf"
+        generar_dxf_desde_geometrias(
+            generar_geometrias(dentro, ancho, largo), ancho, largo, str(ruta)
+        )
+        _, ambientes, _, resultados = cargar_y_editar(
+            ruta, solicitud, {"norte": norte}
+        )
+        editada = distribucion_desde_ambientes(ambientes)
+
+    return (
+        trasladar(editada, retiros.izquierdo, retiros.frontal),
+        terreno,
+        resultados,
+    )
 
 
 # ==========================================

@@ -13,6 +13,7 @@ from src.ai.interpreter import interpretar_instruccion
 from src.ai.ollama_client import OllamaError
 from src.ai.providers import LLMProviderError
 from src.bim.ifc import generar_ifc
+from src.models.requirements import Retiros
 from src.ui import almacen, guardado
 from src.ui import proyecto as pry
 from src.ui.resultados import mostrar_resultado
@@ -109,7 +110,38 @@ OPCIONES_NORTE = {
 }
 
 
-def _generar(instruccion: str, norte: str | None = None) -> None:
+# campo -> etiqueta
+CAMPOS_RETIRO = {
+    "frontal": "Frontal (calle)",
+    "posterior": "Posterior",
+    "izquierdo": "Izquierdo",
+    "derecho": "Derecho",
+}
+
+
+def _pedir_retiros() -> dict:
+    """Los retiros escritos en la pantalla; los que quedan en 0 se omiten."""
+
+    with st.expander("Retiros del terreno (opcional)"):
+        st.caption(
+            "Metros libres entre la casa y cada límite, vistos desde la calle. "
+            "Consulta los de tu municipio. En 0 vale lo que diga la descripción."
+        )
+        valores = {
+            campo: columna.number_input(
+                etiqueta, min_value=0.0, max_value=100.0, step=0.5,
+                key=f"retiro_{campo}",
+            )
+            for columna, (campo, etiqueta) in zip(
+                st.columns(len(CAMPOS_RETIRO)), CAMPOS_RETIRO.items()
+            )
+        }
+    return {campo: v for campo, v in valores.items() if v > 0}
+
+
+def _generar(
+    instruccion: str, norte: str | None = None, retiros: dict | None = None
+) -> None:
 
     if not instruccion.strip():
         st.warning("Primero debes escribir una descripción del proyecto.")
@@ -120,6 +152,9 @@ def _generar(instruccion: str, norte: str | None = None) -> None:
             requerimientos = interpretar_instruccion(instruccion)
             if norte:
                 requerimientos.norte = norte
+            if retiros:
+                leidos = requerimientos.retiros or Retiros()
+                requerimientos.retiros = leidos.model_copy(update=retiros)
 
         if requerimientos.datos_faltantes:
             st.warning(
@@ -279,6 +314,12 @@ EJEMPLOS = {
         "Vivienda en un terreno de 200 m² con 3 dormitorios, sala, cocina "
         "y 2 baños."
     ),
+    # Muestra todo a la vez: plantas, garaje, retiros, norte y mobiliario.
+    "Proyecto completo": (
+        "Casa de dos pisos en un terreno de 12 x 25 metros con retiro frontal "
+        "de 3 m. Quiero garaje, sala, comedor, cocina, lavandería, estudio, "
+        "3 dormitorios y 3 baños. El norte está a la derecha."
+    ),
 }
 
 
@@ -320,8 +361,10 @@ def inicio() -> None:
              "se ubican buscando el mejor sol (criterio para Perú).",
     )
 
+    retiros = _pedir_retiros()
+
     if st.button("Generar plano", type="primary"):
-        _generar(instruccion, OPCIONES_NORTE[norte])
+        _generar(instruccion, OPCIONES_NORTE[norte], retiros)
 
     with st.expander("¿Ya tienes un plano? Ábrelo para editarlo (DXF de cualquier programa)"):
         archivo = st.file_uploader(

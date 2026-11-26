@@ -429,7 +429,7 @@ def entrada(piso) -> list[dict]:
     vivienda = unary_union([a["poligono"] for a in piso.geometrias["ambientes"]])
     piezas = []
     for puerta in (piso.puertas or {}).get("puertas", []):
-        if puerta.get("ambiente_b") != EXTERIOR:
+        if puerta.get("ambiente_b") != EXTERIOR or puerta.get("vehicular"):
             continue
         cx, cy = puerta["centro"]
         horizontal = puerta["orientacion"] == "horizontal"

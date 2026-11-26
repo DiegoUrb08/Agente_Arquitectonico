@@ -114,6 +114,8 @@ def generar_aberturas(
             "espesor_muro": float(abertura["espesor_muro"]),
             "orientacion": orientacion,
             "geometria": geometria,
+            # El portón de un garaje se dibuja distinto.
+            **({"vehicular": True} if abertura.get("vehicular") else {}),
         }
 
         if tipo == "puerta":

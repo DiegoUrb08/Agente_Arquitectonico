@@ -169,7 +169,8 @@ def evaluar_reglas(
         if p.get("ambiente_b") != EXTERIOR
     ]
     entradas = [
-        p["ambiente_a"] for p in puertas if p.get("ambiente_b") == EXTERIOR
+        p["ambiente_a"] for p in puertas
+        if p.get("ambiente_b") == EXTERIOR and not p.get("vehicular")
     ]
 
     if planta_baja and not entradas:

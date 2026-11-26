@@ -3,6 +3,7 @@ from shapely.geometry import LineString, box
 from shapely.ops import unary_union
 
 from src.geometry.adjacency_validator import detectar_adyacencias
+from src.planning.garaje import es_garaje, portones
 from src.planning.reglas_acceso import (
     CIRCULACION,
     EXTERIOR,
@@ -245,7 +246,10 @@ def _puerta_exterior(
     margen = ancho_puerta_m / 2 + separacion_extremos_m
 
     # El ambiente de entrada primero; si está encerrado, cualquier otro.
-    orden = [entrada] + [a["id"] for a in distribucion if a["id"] != entrada]
+    orden = [entrada] + sorted(
+        (a["id"] for a in distribucion if a["id"] != entrada),
+        key=es_garaje,  # la entrada peatonal, solo en el garaje si no hay otro
+    )
 
     for identificador in orden:
 
@@ -448,6 +452,9 @@ def generar_puertas_automaticas(
 
         if exterior:
             puertas.append(exterior)
+
+        # Después de la entrada: los avisos toman la primera puerta peatonal.
+        puertas += portones(distribucion, espesor_exterior_m)
 
     # --------------------------------------------------------
     # RESULTADO

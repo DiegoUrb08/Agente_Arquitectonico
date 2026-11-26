@@ -116,6 +116,13 @@ def _puerta(puerta, ambientes, detalle=False) -> tuple[list, list]:
     prueba = Point(cx + normal[0] * 0.3, cy + normal[1] * 0.3)
     signo = 1 if destino is None or destino["poligono"].covers(prueba) else -1
 
+    if puerta.get("vehicular"):
+        # Portón cerrado, enrasado con el muro.
+        panel = _caja(cx - ancho / 2, cy - GROSOR_HOJA / 2, cx + ancho / 2,
+                      cy + GROSOR_HOJA / 2, 0.01, ALTURA_PUERTA - 0.02,
+                      "puerta")
+        return [dintel], [panel]
+
     medio = puerta["espesor_muro"] / 2
     if horizontal:
         bisagra_x = cx - ancho / 2

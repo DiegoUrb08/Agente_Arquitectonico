@@ -247,6 +247,7 @@ def aplicar_edicion(proyecto: dict, texto: str, solicitud) -> None:
 
     actual = version_actual(proyecto)
     norte = getattr(proyecto["requerimientos"], "norte", None)
+    retiros = getattr(proyecto["requerimientos"], "retiros", None)
 
     with tempfile.TemporaryDirectory() as carpeta:
         entrada = Path(carpeta) / "entrada.dxf"
@@ -254,11 +255,13 @@ def aplicar_edicion(proyecto: dict, texto: str, solicitud) -> None:
         entrada.write_bytes(actual["dxf"])
         if isinstance(actual["resultado"], ResultadoPlanoMultipisos):
             resultado = editar_plano_multipisos(
-                actual["resultado"], str(salida), solicitud, norte=norte
+                actual["resultado"], str(salida), solicitud, norte=norte,
+                retiros=retiros,
             )
         else:
             resultado = editar_plano(
-                str(entrada), str(salida), solicitud, norte=norte
+                str(entrada), str(salida), solicitud, norte=norte,
+                retiros=retiros,
             )
         dxf = salida.read_bytes()
 

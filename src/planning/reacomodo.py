@@ -12,6 +12,11 @@ from ortools.sat.python import cp_model
 
 from src.planning import layout_optimizer as optimizador
 from src.models.requirements import Ambiente, RequerimientosArquitectonicos
+from src.planning.garaje import (
+    ANCHO_MINIMO_M,
+    AREA_OBJETIVO_MINIMA_M2,
+    es_garaje,
+)
 from src.planning.reglas_acceso import (
     asignar_en_suite,
     completar_programa,
@@ -84,7 +89,7 @@ def _resolver(
     distribucion, nodos, ancho_dm, largo_dm, con_reglas, preferencias,
     peso_area, factores=None, pedido=None, pares_pedidos=(),
     fijos=frozenset(), limites=None, planta_baja=True, cubrir=None,
-    norte=None,
+    norte=None, garaje=True,
 ):
     """
     `pedido(modelo, variables, adyacencias)` impone el cambio solicitado y
@@ -149,6 +154,9 @@ def _resolver(
             optimizador._cocina_junto_al_comedor(modelo, ids, adyacencias)
     else:
         optimizador._conectividad(modelo, ids, ids[0], adyacencias.par)
+
+    if planta_baja and garaje:
+        optimizador._garajes_al_frente(modelo, ids, variables)
 
     termino_pedido = pedido(modelo, variables, adyacencias) if pedido else 0
 
@@ -222,13 +230,19 @@ def _por_niveles(distribucion, nodos, ancho_terreno_m, largo_terreno_m, **opcion
     )
     intentos += [(n, {}) for n in NIVELES]
 
-    for (con_reglas, preferencias), contorno in intentos:
-        resultado = _resolver(
-            distribucion, nodos, ancho_dm, largo_dm, con_reglas, preferencias,
-            **contorno, **opciones,
-        )
-        if resultado is not None:
-            return resultado
+    # Si el cambio pedido saca el garaje del frente, se acepta y se avisa.
+    hay_garaje = opciones.get("planta_baja", True) and any(
+        es_garaje(n["id"]) for n in nodos
+    )
+
+    for garaje in (True, False) if hay_garaje else (True,):
+        for (con_reglas, preferencias), contorno in intentos:
+            resultado = _resolver(
+                distribucion, nodos, ancho_dm, largo_dm, con_reglas,
+                preferencias, garaje=garaje, **contorno, **opciones,
+            )
+            if resultado is not None:
+                return resultado
 
     return None
 
@@ -407,6 +421,9 @@ def agregar_a_planta(
     pasillo si el nuevo programa lo necesita.
     """
     lado = round(math.sqrt(nuevo["area_m2"]), 1)
+    if es_garaje(nuevo["id"]):
+        nuevo = {**nuevo, "area_m2": max(nuevo["area_m2"], AREA_OBJETIVO_MINIMA_M2)}
+        lado = ANCHO_MINIMO_M
     punto = distribucion[0] if distribucion else {"x": 0.0, "y": 0.0}
     incorporados = [{
         "id": nuevo["id"], "nombre": nuevo["nombre"],

@@ -28,6 +28,12 @@ from src.planning.reglas_ambientes import (  # noqa: F401
     obtener_proporcion_maxima,
     obtener_areas_ambiente,
 )
+from src.planning.garaje import (
+    ANCHO_MINIMO_M as ANCHO_GARAJE_M,
+    AREA_OBJETIVO_MINIMA_M2 as AREA_GARAJE_M2,
+    LARGO_MINIMO_M as LARGO_GARAJE_M,
+    es_garaje,
+)
 from src.planning.orientacion import PREFERENCIAS, coste, punto_de
 from src.planning.reglas_acceso import (
     asignar_en_suite,
@@ -458,6 +464,40 @@ def _entrada_al_frente(modelo, ids, variables, entrada):
     modelo.Add(variables[entrada]["ancho"] >= LONGITUD_MINIMA_ACCESO_DM)
 
 
+def _garajes_al_frente(modelo, ids, variables):
+    """Cada garaje da a la calle y en él cabe un auto."""
+
+    for garaje in filter(es_garaje, ids):
+
+        for identificador in ids:
+            if identificador != garaje:
+                modelo.Add(variables[garaje]["y"] <= variables[identificador]["y"])
+
+        modelo.Add(variables[garaje]["ancho"] >= round(ANCHO_GARAJE_M * 10))
+        modelo.Add(variables[garaje]["largo"] >= round(LARGO_GARAJE_M * 10))
+
+
+def _preparar_garajes(nodos, ancho_terreno_dm, largo_terreno_dm):
+    """Comprueba que quepa un auto y no deja un área objetivo imposible."""
+
+    for nodo in nodos:
+
+        if not es_garaje(nodo["id"]):
+            continue
+
+        if (
+            ancho_terreno_dm < round(ANCHO_GARAJE_M * 10)
+            or largo_terreno_dm < round(LARGO_GARAJE_M * 10)
+        ):
+            raise ValueError(
+                f"El garaje necesita {ANCHO_GARAJE_M:g} × {LARGO_GARAJE_M:g} m "
+                "con frente a la calle y no cabe en el terreno disponible."
+            )
+
+        objetivo = nodo.get("area_objetivo_m2") or 0
+        nodo["area_objetivo_m2"] = max(objetivo, AREA_GARAJE_M2)
+
+
 def _separar_banos(modelo, ids, variables, relaciones):
     """Dos baños no comparten pared, salvo que el usuario lo pida."""
 
@@ -826,6 +866,8 @@ def _resolver_nivel(
     ids = [nodo["id"] for nodo in nodos]
     fijos = {i: g for i, g in (fijos or {}).items() if i in ids}
     _fijar(nodos, fijos)
+    if planta_baja:
+        _preparar_garajes(nodos, ancho_terreno_dm, largo_terreno_dm)
 
     if sum(obtener_areas_ambiente(n)[0] for n in nodos) > area_terreno_dm2:
         return None
@@ -872,6 +914,9 @@ def _resolver_nivel(
             _entrada_al_frente(modelo, ids, variables, entrada)
     else:
         _conectividad(modelo, ids, ids[0], adyacencias.par)
+
+    if planta_baja:
+        _garajes_al_frente(modelo, ids, variables)
 
     if nivel.separar_banos:
         _separar_banos(modelo, ids, variables, relaciones)

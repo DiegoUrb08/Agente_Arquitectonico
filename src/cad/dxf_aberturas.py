@@ -37,6 +37,10 @@ def dibujar_puerta(msp, puerta):
 
     signo = 1 if sentido == "positivo" else -1
 
+    if puerta.get("vehicular"):
+        _dibujar_porton(msp, x, y, ancho, espesor)
+        return
+
     # ----------------------------------
     # PUERTA EN MURO HORIZONTAL
     # ----------------------------------
@@ -128,6 +132,23 @@ def dibujar_puerta(msp, puerta):
             f"Orientación de puerta desconocida: {orientacion}"
         )
 
+
+
+def _dibujar_porton(msp, x, y, ancho, espesor):
+    """Portón de garaje (en el frente): jambas y hoja cerrada, sin giro."""
+
+    x1, x2 = x - ancho / 2, x + ancho / 2
+
+    for px in (x1, x2):
+        msp.add_line(
+            (px, y - espesor / 2), (px, y + espesor / 2),
+            dxfattribs={"layer": "PUERTAS"}
+        )
+
+    for dy in (-espesor / 6, espesor / 6):
+        msp.add_line(
+            (x1, y + dy), (x2, y + dy), dxfattribs={"layer": "PUERTAS"}
+        )
 
 
 # ==========================================

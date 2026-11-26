@@ -81,7 +81,8 @@ def _leyenda_html(piso) -> str:
 
 
 def _mostrar_svg(
-    piso, capas, clave: str, enfocar: bool, cambiados, norte=None
+    piso, capas, clave: str, enfocar: bool, cambiados, norte=None,
+    retiros=None,
 ) -> None:
     """El SVG va en un iframe: st.html descarta las etiquetas <svg>."""
     svg = generar_svg_plano(
@@ -92,6 +93,7 @@ def _mostrar_svg(
         enfocar=enfocar,
         resaltar=cambiados,
         norte=norte,
+        retiros=retiros,
     )
     altura = int(max(360, min(780, 640 * proporcion_vista(piso, enfocar))))
     st.iframe(documento_svg(svg), height=altura)
@@ -105,7 +107,7 @@ def _mostrar_3d(piso, capas, clave: str, cambiados, detalle: bool) -> None:
 @st.fragment
 def visor_plano(
     piso, clave: str, cambiados=frozenset(), archivo: str = "plano.svg",
-    norte: str | None = None,
+    norte: str | None = None, retiros: dict | None = None,
 ) -> None:
     """Vista previa con capas conmutables; solo se vuelve a ejecutar este bloque."""
 
@@ -149,7 +151,7 @@ def visor_plano(
     enfocar = vista == VISTA_VIVIENDA
 
     st.html(_leyenda_html(piso))
-    _mostrar_svg(piso, capas, clave, enfocar, cambiados, norte)
+    _mostrar_svg(piso, capas, clave, enfocar, cambiados, norte, retiros)
 
     if cambiados and "cambios" in capas:
         st.caption("En ámbar parpadeante: lo que cambió en esta versión.")
@@ -165,6 +167,7 @@ def visor_plano(
             enfocar=enfocar,
             fondo_pagina=True,
             norte=norte,
+            retiros=retiros,
         ),
         file_name=archivo,
         mime="image/svg+xml",
@@ -249,7 +252,8 @@ def mostrar_puertas(resultado_puertas) -> None:
                 "Puerta": i,
                 "Ambiente A": p.get("ambiente_a", ""),
                 "Ambiente B": (
-                    "Exterior" if p.get("ambiente_b") == "exterior"
+                    "Calle (portón)" if p.get("vehicular")
+                    else "Exterior" if p.get("ambiente_b") == "exterior"
                     else p.get("ambiente_b", "")
                 ),
                 "Orientación": p["orientacion"],
@@ -273,6 +277,8 @@ def mostrar_resultado(
     """
 
     norte = getattr(requerimientos, "norte", None)
+    retiros = getattr(requerimientos, "retiros", None)
+    retiros = retiros.model_dump() if retiros else None
     pisos = pisos_de(resultado)
     etiquetas = etiquetas_de_pisos(len(pisos))
 
@@ -300,7 +306,9 @@ def mostrar_resultado(
     archivo = "plano.svg" if len(pisos) == 1 else f"plano_planta_{indice + 1}.svg"
 
     with pestanas[0]:
-        visor_plano(piso, f"{clave}-{indice}", cambiados, archivo, norte)
+        visor_plano(
+            piso, f"{clave}-{indice}", cambiados, archivo, norte, retiros
+        )
     with pestanas[1]:
         tabla_ambientes(piso, norte)
     with pestanas[2]:

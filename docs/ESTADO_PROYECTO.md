@@ -394,6 +394,27 @@ Límites:
 - Se muestra la flecha de norte (vista 2D y SVG), la columna «Ventanas hacia» y una nota en el chat.
 - Límites: el norte no se cambia por chat; no se conserva al reabrir un DXF (sí en proyectos guardados); no sale en el DXF, la vista 3D ni el IFC; solo cuatro orientaciones (sin ángulos); la sala suele estar limitada porque la entrada va en el frente.
 
+## Retiros y ubicación en el lote — ✅ IMPLEMENTADO (2026-11-26)
+- `RequerimientosArquitectonicos.retiros` (frontal, posterior, izquierdo, derecho). Se escriben en la pantalla de inicio o se leen de la descripción (`src/planning/retiros.py`); ninguno por defecto (decisión del dueño).
+- La planta se resuelve en el área edificable y se coloca al frente y centrada a lo ancho, con o sin retiros. En dos plantas ambas se mueven igual.
+- Las ediciones por chat trabajan sobre el terreno recortado, así que no invaden los retiros. No vuelven a centrar la casa.
+- La vista 2D y el SVG marcan el límite; una nota del chat indica el área edificable.
+- Verificado con tres descripciones reales (Groq), incluida una de dos plantas, con dos cambios cada una: retiros respetados en todas las versiones.
+- Límites: no se cambian por chat; no salen en el DXF, el 3D ni el IFC; no se conservan al reabrir un DXF (sí en proyectos guardados); terreno rectangular; los voladizos no se consideran.
+
+## Garaje con acceso desde la calle — ✅ IMPLEMENTADO (2026-11-26)
+- `src/planning/garaje.py`. En la planta baja el optimizador lo pone en la línea de fachada, con al menos 2,70 × 5,00 m (medida del RNE A.010 para un estacionamiento individual, tomada de memoria: conviene verificarla) y área objetivo mínima de 15 m².
+- Portón de 2,40 m aparte de la entrada peatonal: líneas sin arco en el DXF, panel cerrado en 3D, puerta en el IFC.
+- Ediciones: se intenta conservarlo a la calle; si el cambio no lo permite, se aplica y se avisa. «Garaje» y «cochera» se entienden como lo mismo.
+- Verificado con Groq en cinco descripciones (incluida una de dos plantas y otra con dos garajes), con dos cambios cada una: garaje a la calle y con portón en todas las versiones. En un lote de 6 m, una vez agregar un estudio dejó ambientes accesibles solo cruzando otros (avisado); en 8 repeticiones no volvió a ocurrir (el solver tiene límite de tiempo).
+- Límites: un auto por garaje (el ancho no crece para dos autos); sin rampa ni vereda; no se dibuja el auto.
+
+## Ejemplo «Proyecto completo» y mobiliario — ✅ (2026-11-26)
+- Quinto ejemplo en la pantalla de inicio: dos plantas en 12 × 25 m, retiro frontal de 3 m, garaje, sala, comedor, cocina, lavandería, estudio, 3 dormitorios, 3 baños y norte a la derecha.
+- Mobiliario (`mobiliario_automatico.py`): si algo no cabe se prueban otros órdenes, luego solo el barrido real de la puerta y al final una ducha de 0,70 × 0,90 m; la mesa se corre si una puerta ocupa el centro; el portón del garaje ya no reserva espacio en los ambientes vecinos.
+- Medido: en 15 distribuciones del ejemplo, de 9 con todo el mobiliario a 15; sin avisos de reglas. Otras 5 generaciones con Groq: completas. Revisado en una captura del plano 2D.
+- Límites: el garaje no tiene auto dibujado; sala, cocina y comedor llevan pocos muebles; la planta alta puede dejar una ranura de luz angosta (menos de 1,5 m) con ventanas hacia ella.
+
 ## Exportación BIM
 - **Exportación BIM — ✅ IMPLEMENTADA (2026-11-26).** Botón «Modelo BIM (IFC)» junto a DXF y CSV; el archivo se genera solo al pulsarlo (descarga diferida de Streamlit). `src/bim/ifc.py` (`generar_ifc`, IfcOpenShell 0.9, obligatoria en `requirements.txt`) produce IFC4 en metros:
   - Proyecto → sitio → edificio → una planta por piso (cada 2,80 m).
@@ -418,8 +439,8 @@ Límites:
 ### Funcionalidad
 - Elegir entre varias distribuciones propuestas.
 - Ventanas: altura de alféizar configurable. Norte en el DXF, el 3D y el IFC.
-- Retiros del terreno y ubicación de la casa en el lote.
-- Garaje con acceso desde la calle; eliminar huecos diminutos entre muros.
+- Retiros en el DXF, el 3D y el IFC.
+- Eliminar huecos diminutos entre muros.
 - Medidas en 3D y en el IFC, o medidas libres de pared a pared.
 - Lámina en PDF con plano, cuadro de áreas, escala y rótulo.
 - BIM con materiales, cubierta y escalera como IfcStair.
