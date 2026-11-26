@@ -117,9 +117,23 @@ van juntos) tiene prioridad.
   el exterior para tener ventana. Para lograrlo las áreas pueden variar
   alrededor de un 12 % y generar cada planta tarda unos segundos más.
 
+- Las ventanas van centradas en las paredes exteriores o junto a la puerta; en
+  una fachada angosta la entrada se corre a un lado para que quepan ambas. A un
+  hueco entre ambientes solo dan si es un patio (4 m² y 1,5 m de ancho).
+
+### Orientación al sol
+
+Indica dónde está el norte, visto desde la calle, con la opción **¿Dónde está
+el norte?** o en la descripción («el norte está a la derecha», «la fachada mira
+al este»). La sala busca el norte (luego el este) y los dormitorios el este
+(sol de la mañana, luego el norte); el oeste queda último por el calor de la
+tarde. El criterio está pensado para Perú. Es una preferencia: no siempre se
+puede cumplir en todos los ambientes. El plano muestra la flecha de norte, la
+tabla de ambientes indica hacia dónde miran las ventanas y el chat lo resume.
+
 Si el terreno no permite cumplirlas todas, el plano se genera igualmente y
-muestra cuáles no se cumplen. Todavía no se garantiza ventana en todos los
-ambientes (también se avisa).
+muestra cuáles no se cumplen. La ventana no está garantizada: un ambiente que
+quede sin pared exterior se avisa.
 
 ---
 
@@ -266,7 +280,7 @@ server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
 static/three/           # Copia fija de Three.js 0.160.0 (MIT) para la vista 3D sin internet
-tests/                  # 499 tests pytest
+tests/                  # 530 tests pytest
 ```
 
 ---

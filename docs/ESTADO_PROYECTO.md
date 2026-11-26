@@ -81,7 +81,7 @@
 ## Limitaciones conocidas
 - `editar_plano` regenera muros, puertas, aberturas y mobiliario (se recoloca con las plantillas, no se conservan posiciones previas) y, si un ambiente que actúa de «nudo» cambia mucho de tamaño, puede quedar sin pared compartida con algún vecino (se avisa; no se reubican los vecinos).
 - `editar_dxf` (edición directa) sigue sin recalcular muros ni puertas.
-- Las ventanas tienen ancho fijo por tipo de ambiente (sin altura de alféizar ni orientación solar) y se colocan en cualquier pared exterior, incluso la que da a un hueco interior entre ambientes.
+- Las ventanas tienen un ancho por tipo de ambiente (sin altura de alféizar configurable).
 - El editor solo opera con habitaciones rectangulares (los DXF de otros programas se aproximan al abrirlos).
 - En distribuciones muy compactas, `modificar_area` y `mover_ambiente` suelen rechazar el cambio por falta de espacio (comportamiento correcto, pero limitante).
 - El CI de GitHub Actions pasó en su primer run (2026-11-24, 1 min 11 s). Aviso pendiente: `actions/checkout@v4` y `actions/setup-python@v5` usan Node.js 20, que GitHub está retirando (hoy se fuerza Node 24); conviene subir sus versiones.
@@ -381,6 +381,19 @@ Límites:
 - Medido con proyectos reales (Groq) de una y dos plantas: reconstrucción idéntica; 10–14 KB con 4 versiones; guardar 4 ms; abrir 0,4–0,6 s con 4 versiones, 3–4 s con 30 y 9–13 s con 100; listar 52 proyectos, 0,05 s.
 - Límites: reabrir reconstruye todas las versiones (se podría hacer bajo demanda); si cambian las reglas de muros, puertas o muebles, un proyecto antiguo puede verse distinto; sin cuentas (quien abra la app ve la lista); dos pestañas sobre el mismo proyecto: gana el último cambio. Falta probar en un navegador la descarga y la importación.
 
+## Ventanas en sala y dormitorios — ✅ CORREGIDAS (2026-11-26)
+- Causas halladas: la ventana iba siempre centrada y se descartaba si ahí estaba la puerta de entrada; además, se ponían ventanas hacia huecos diminutos entre ambientes.
+- `window_generator.py`: si el centro está ocupado, la ventana se corre al tramo libre más amplio (0,15 m de la puerta, 0,40 m de las esquinas). Un hueco interior solo recibe ventanas si es un patio (4 m² y 1,5 m de ancho o más).
+- `door_generator.py`: en fachadas angostas (menos de 1,5 m a cada lado) la entrada va a un extremo para dejar sitio a la ventana.
+- Medido en 8 programas × 2 corridas: salas y dormitorios sin ventana al exterior, de 10/64 (5 sin ventana y 5 ventanas hacia huecos) a 0/64.
+- No es una restricción dura del optimizador: si un ambiente queda encerrado se sigue avisando «Sin ventana al exterior». Pendiente: altura de alféizar.
+
+## Orientación al sol — ✅ IMPLEMENTADA (2026-11-26)
+- `RequerimientosArquitectonicos.norte`: lado del terreno donde está el norte. Se elige en la pantalla de inicio o se lee de la descripción con expresiones regulares (`src/planning/orientacion.py`); no se le pide al modelo.
+- Criterio para Perú: sala norte > este > sur > oeste; dormitorios este > norte > sur > oeste. Preferencia blanda en el optimizador (`PESO_ORIENTACION`) y en el reacomodo al editar.
+- Se muestra la flecha de norte (vista 2D y SVG), la columna «Ventanas hacia» y una nota en el chat.
+- Límites: el norte no se cambia por chat; no se conserva al reabrir un DXF (sí en proyectos guardados); no sale en el DXF, la vista 3D ni el IFC; solo cuatro orientaciones (sin ángulos); la sala suele estar limitada porque la entrada va en el frente.
+
 ## Exportación BIM
 - **Exportación BIM — ✅ IMPLEMENTADA (2026-11-26).** Botón «Modelo BIM (IFC)» junto a DXF y CSV; el archivo se genera solo al pulsarlo (descarga diferida de Streamlit). `src/bim/ifc.py` (`generar_ifc`, IfcOpenShell 0.9, obligatoria en `requirements.txt`) produce IFC4 en metros:
   - Proyecto → sitio → edificio → una planta por piso (cada 2,80 m).
@@ -404,7 +417,7 @@ Límites:
 
 ### Funcionalidad
 - Elegir entre varias distribuciones propuestas.
-- Ventanas: garantizar ventana en dormitorios y sala, orientación (norte), altura de alféizar; no colocarlas hacia huecos interiores.
+- Ventanas: altura de alféizar configurable. Norte en el DXF, el 3D y el IFC.
 - Retiros del terreno y ubicación de la casa en el lote.
 - Garaje con acceso desde la calle; eliminar huecos diminutos entre muros.
 - Medidas en 3D y en el IFC, o medidas libres de pared a pared.

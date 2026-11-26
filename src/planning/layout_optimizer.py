@@ -28,6 +28,7 @@ from src.planning.reglas_ambientes import (  # noqa: F401
     obtener_proporcion_maxima,
     obtener_areas_ambiente,
 )
+from src.planning.orientacion import PREFERENCIAS, coste, punto_de
 from src.planning.reglas_acceso import (
     asignar_en_suite,
     completar_programa,
@@ -49,6 +50,9 @@ PESO_HUECOS = 10
 PESO_DESVIACION_AREA = 3
 # Equivale a 5 m² de huecos: se prefiere que los ambientes tengan ventana.
 PESO_SIN_VENTANA = 5000
+# Por cada puesto que baja la orientación de la sala o un dormitorio (≈0,8 m²
+# de huecos): orienta sin sacrificar la compactación.
+PESO_ORIENTACION = 800
 
 
 @dataclass(frozen=True)
@@ -648,6 +652,42 @@ def _ambientes_interiores(modelo, ids, variables, bordes):
     return interiores
 
 
+def _orientacion(modelo, ids, variables, bordes, norte):
+    """
+    Un término por sala y dormitorio: lo mal orientado que está el mejor lado
+    de la vivienda que toca (0 a 3). Sin norte no hay términos.
+    """
+
+    if not norte:
+        return []
+
+    terminos = []
+
+    for identificador in ids:
+
+        tipo = tipo_base(identificador)
+        if tipo not in PREFERENCIAS:
+            continue
+
+        datos = variables[identificador]
+        elegidos, costes = [], []
+
+        for clave, borde, lado in zip(
+            ("x", "fin_x", "y", "fin_y"), bordes,
+            ("izquierda", "derecha", "frente", "fondo"),
+        ):
+            usa = modelo.NewBoolVar(f"mira_{clave}_{identificador}")
+            modelo.Add(datos[clave] == borde).OnlyEnforceIf(usa)
+            elegidos.append(usa)
+            costes.append(coste(tipo, punto_de(lado, norte)) * usa)
+
+        interior = modelo.NewBoolVar(f"sin_sol_{identificador}")
+        modelo.AddExactlyOne(elegidos + [interior])
+        terminos.append(sum(costes) + 3 * interior)
+
+    return terminos
+
+
 def _resolver(modelo, segundos=TIEMPO_MAXIMO_SEGUNDOS):
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = segundos
@@ -748,7 +788,7 @@ def optimizar_distribucion(
 
         resultado = _resolver_nivel(
             grafo_nivel, nivel, ancho_terreno_dm, largo_terreno_dm,
-            planta_baja, fijos, limites,
+            planta_baja, fijos, limites, requerimientos.norte,
         )
 
         if resultado is not None:
@@ -775,7 +815,7 @@ def _fijar(nodos, fijos):
 
 def _resolver_nivel(
     grafo, nivel, ancho_terreno_dm, largo_terreno_dm, planta_baja,
-    fijos=None, limites=None,
+    fijos=None, limites=None, norte=None,
 ):
     """Distribución que cumple las reglas del nivel, o None si no la halla."""
 
@@ -877,6 +917,7 @@ def _resolver_nivel(
         x0, y0, x1, y1 = (round(v * 10) for v in limites)
         huecos = (x1 - x0) * (y1 - y0) - area_total
     interiores = _ambientes_interiores(modelo, ids, variables, bordes)
+    orientacion = _orientacion(modelo, ids, variables, bordes, norte)
 
     distancias = _distancias_relaciones(
         modelo, relaciones, variables, ancho_terreno_dm, largo_terreno_dm
@@ -885,6 +926,7 @@ def _resolver_nivel(
     modelo.Minimize(
         PESO_HUECOS * huecos
         + PESO_SIN_VENTANA * sum(interiores)
+        + PESO_ORIENTACION * sum(orientacion)
         + PESO_DESVIACION_AREA * desviacion_total
         + PESO_RELACIONES_USUARIO * sum(distancias)
         + PESO_ZONIFICACION_SOCIAL * sum(proximidad_social)

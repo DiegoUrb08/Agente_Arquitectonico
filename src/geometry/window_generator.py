@@ -2,10 +2,14 @@
 Generación automática de ventanas sobre los muros exteriores.
 
 Una pared es exterior cuando pertenece al perímetro del conjunto de
-ambientes (no la comparte con otro ambiente).
+ambientes (no la comparte con otro ambiente) o da a un hueco interior lo
+bastante grande para ser un patio.
+
+La ventana va centrada en la pared; si ahí hay una puerta, se corre al tramo
+libre más amplio.
 """
 
-from shapely.geometry import LineString, MultiLineString
+from shapely.geometry import LineString, MultiLineString, Polygon, box
 from shapely.ops import unary_union
 
 from src.geometry.opening_generator import construir_abertura
@@ -23,7 +27,13 @@ ANCHOS_POR_AMBIENTE = {
 }
 
 MARGEN_EXTREMOS_M = 0.40
+ANCHO_MINIMO_M = 0.50
 SEPARACION_M = 0.05
+# Distancia a una puerta cuando la ventana no puede ir centrada.
+SEPARACION_CORRIDA_M = 0.15
+# Un hueco entre ambientes solo ilumina si es un patio.
+AREA_MINIMA_PATIO_M2 = 4.0
+ANCHO_MINIMO_PATIO_M = 1.5
 MAX_VENTANAS_POR_AMBIENTE = 2
 TOLERANCIA = 1e-6
 
@@ -89,6 +99,64 @@ def _fusionar_colineales(tramos):
     return tramos_finales
 
 
+def _perimetro_exterior(conjunto):
+    """Contorno de la vivienda más el de sus patios."""
+    anillos = []
+    for parte in getattr(conjunto, "geoms", [conjunto]):
+        anillos.append(parte.exterior)
+        for interior in parte.interiors:
+            hueco = Polygon(interior)
+            if (
+                hueco.area >= AREA_MINIMA_PATIO_M2
+                and not hueco.buffer(-ANCHO_MINIMO_PATIO_M / 2).is_empty
+            ):
+                anillos.append(interior)
+    return unary_union([LineString(a.coords) for a in anillos])
+
+
+def _posiciones(tramo, ancho_ideal, espesor, ocupados):
+    """
+    (centro, ancho) candidatos a lo largo del tramo, el preferido primero:
+    centrada y, si no, en los espacios que dejan los huecos ya ocupados.
+    """
+    orientacion, valor, lo, hi = tramo
+    inicio, fin = lo + MARGEN_EXTREMOS_M, hi - MARGEN_EXTREMOS_M
+    ancho = min(ancho_ideal, fin - inicio)
+
+    if ancho < ANCHO_MINIMO_M:
+        return
+
+    yield (lo + hi) / 2, ancho
+
+    medio = espesor / 2
+    if orientacion == "h":
+        franja = box(lo, valor - medio, hi, valor + medio)
+        eje = 0
+    else:
+        franja = box(valor - medio, lo, valor + medio, hi)
+        eje = 1
+
+    bloqueados = sorted(
+        (parte.bounds[eje] - SEPARACION_CORRIDA_M,
+         parte.bounds[eje + 2] + SEPARACION_CORRIDA_M)
+        for parte in (franja.intersection(o) for o in ocupados)
+        if parte.area > TOLERANCIA
+    )
+
+    libres = []
+    for desde, hasta in bloqueados:
+        if desde > inicio:
+            libres.append((inicio, min(desde, fin)))
+        inicio = max(inicio, hasta)
+    libres.append((inicio, fin))
+
+    for desde, hasta in sorted(libres, key=lambda t: t[1] - t[0], reverse=True):
+        ancho = min(ancho_ideal, hasta - desde)
+        if ancho >= ANCHO_MINIMO_M - TOLERANCIA:
+            # Redondeo hacia abajo: no debe invadir la separación.
+            yield (desde + hasta) / 2, int(ancho * 1000) / 1000
+
+
 def generar_ventanas_automaticas(
     resultado_geometrias,
     espesor_muro_m=0.20,
@@ -107,7 +175,7 @@ def generar_ventanas_automaticas(
         raise ValueError("No hay ambientes para colocar ventanas.")
 
     conjunto = unary_union([a["poligono"] for a in ambientes])
-    perimetro = conjunto.boundary
+    perimetro = _perimetro_exterior(conjunto)
 
     # Huecos ya ocupados (puertas y ventanas aceptadas), con holgura.
     ocupados = [
@@ -134,44 +202,41 @@ def generar_ventanas_automaticas(
         ancho_ideal = ANCHOS_POR_AMBIENTE.get(tipo, ANCHO_PREDETERMINADO_M)
         colocadas = 0
 
-        for orientacion, valor, lo, hi in tramos:
+        for tramo in tramos:
 
             if colocadas >= MAX_VENTANAS_POR_AMBIENTE:
                 break
 
-            disponible = (hi - lo) - 2 * MARGEN_EXTREMOS_M
-            ancho = min(ancho_ideal, disponible)
+            orientacion, valor = tramo[:2]
 
-            if ancho < 0.5:
-                continue
+            for medio, ancho in _posiciones(
+                tramo, ancho_ideal, espesor_muro_m, ocupados
+            ):
+                if orientacion == "h":
+                    centro = (round(medio, 4), round(valor, 4))
+                    orient = "horizontal"
+                else:
+                    centro = (round(valor, 4), round(medio, 4))
+                    orient = "vertical"
 
-            medio = (lo + hi) / 2
+                ancho = round(ancho, 3)
+                hueco = construir_abertura(centro, ancho, espesor_muro_m, orient)
 
-            if orientacion == "h":
-                centro, orient = (round(medio, 4), round(valor, 4)), "horizontal"
-            else:
-                centro, orient = (round(valor, 4), round(medio, 4)), "vertical"
+                if any(hueco.intersects(o) for o in ocupados):
+                    continue
 
-            ventana = {
-                "tipo": "ventana",
-                "centro": centro,
-                "ancho": round(ancho, 3),
-                "espesor_muro": espesor_muro_m,
-                "orientacion": orient,
-                "ambiente_a": ambiente["id"],
-                "ambiente_b": None,
-            }
-
-            hueco = construir_abertura(
-                centro, ventana["ancho"], espesor_muro_m, orient
-            )
-
-            if any(hueco.intersects(o) for o in ocupados):
-                continue
-
-            ocupados.append(hueco.buffer(SEPARACION_M))
-            ventanas.append(ventana)
-            colocadas += 1
+                ocupados.append(hueco.buffer(SEPARACION_M))
+                ventanas.append({
+                    "tipo": "ventana",
+                    "centro": centro,
+                    "ancho": ancho,
+                    "espesor_muro": espesor_muro_m,
+                    "orientacion": orient,
+                    "ambiente_a": ambiente["id"],
+                    "ambiente_b": None,
+                })
+                colocadas += 1
+                break
 
         if colocadas == 0:
             omitidos.append(ambiente["id"])

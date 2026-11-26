@@ -135,6 +135,21 @@ def fraccion_ocupada(resultado) -> float:
     return ((vx1 - vx0) * (vy1 - vy0)) / ((tx1 - tx0) * (ty1 - ty0))
 
 
+def _flecha_de_norte(norte: str) -> str:
+    """Rosa mínima en el margen superior izquierdo."""
+    giro = {"fondo": 0, "derecha": 90, "frente": 180, "izquierda": 270}[norte]
+    dx, dy = {0: (0, -1), 90: (1, 0), 180: (0, 1), 270: (-1, 0)}[giro]
+    return (
+        '<g class="norte" transform="translate(-1.1 0.15)">'
+        "<title>Norte</title>"
+        f'<circle r="0.34" fill="none" stroke="{TEXTO_SUAVE}" stroke-width="0.03"/>'
+        f'<path d="M0 -0.3L0.12 0.14L0 0.06L-0.12 0.14Z" fill="{CAMBIO}" '
+        f'transform="rotate({giro})"/>'
+        f'<text x="{_n(dx * 0.5)}" y="{_n(dy * 0.5 + 0.09)}" text-anchor="middle" '
+        f'font-size="0.26" font-weight="bold" fill="{TEXTO}">N</text></g>'
+    )
+
+
 def generar_svg_plano(
     resultado,
     capas=CAPAS_POR_DEFECTO,
@@ -143,6 +158,7 @@ def generar_svg_plano(
     enfocar: bool = False,
     resaltar=frozenset(),
     fondo_pagina: bool = False,
+    norte: str | None = None,
 ) -> str:
     """SVG del plano de un piso (`ResultadoPlano`).
 
@@ -154,6 +170,7 @@ def generar_svg_plano(
     Con `enfocar` solo se muestra la vivienda (y las cotas miden la vivienda).
     `resaltar` son los ids de ambientes que cambiaron (capa "cambios").
     `fondo_pagina` añade un fondo sólido, para guardar el SVG como archivo.
+    `norte` (lado del terreno donde está) dibuja la flecha de norte.
     """
     minx, miny, maxx, maxy = _marco(resultado, enfocar)
     ancho = maxx - minx
@@ -365,5 +382,8 @@ def generar_svg_plano(
             f'text-anchor="middle" font-size="0.42" fill="{TEXTO_SUAVE}">{largo:.2f} m</text>'
         )
 
-    s.append("</g></svg>")
+    s.append("</g>")
+    if norte:
+        s.append(_flecha_de_norte(norte))
+    s.append("</svg>")
     return "".join(s)

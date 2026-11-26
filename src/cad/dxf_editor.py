@@ -1122,7 +1122,10 @@ def cargar_y_editar(ruta_entrada, solicitud, planta=None, numeros=None):
 
     for operacion in operaciones:
 
-        if getattr(operacion, "planta", None) == "alta" and planta is None:
+        if (
+            getattr(operacion, "planta", None) == "alta"
+            and "fijos" not in (planta or {})  # solo en casas de dos
+        ):
             raise ValueError("Este plano tiene una sola planta.")
 
         if operacion.tipo == "agregar_ambiente":

@@ -4,6 +4,7 @@ from html import escape
 
 import streamlit as st
 
+from src.planning.orientacion import ventanas_por_ambiente
 from src.ui.escena_3d import documento_3d, generar_escena_3d
 from src.ui.pantalla_completa import documento_svg
 from src.ui.proyecto import dimensiones_terreno, pisos_de
@@ -79,7 +80,9 @@ def _leyenda_html(piso) -> str:
     )
 
 
-def _mostrar_svg(piso, capas, clave: str, enfocar: bool, cambiados) -> None:
+def _mostrar_svg(
+    piso, capas, clave: str, enfocar: bool, cambiados, norte=None
+) -> None:
     """El SVG va en un iframe: st.html descarta las etiquetas <svg>."""
     svg = generar_svg_plano(
         piso,
@@ -88,6 +91,7 @@ def _mostrar_svg(piso, capas, clave: str, enfocar: bool, cambiados) -> None:
         ocupar_contenedor=True,
         enfocar=enfocar,
         resaltar=cambiados,
+        norte=norte,
     )
     altura = int(max(360, min(780, 640 * proporcion_vista(piso, enfocar))))
     st.iframe(documento_svg(svg), height=altura)
@@ -99,7 +103,10 @@ def _mostrar_3d(piso, capas, clave: str, cambiados, detalle: bool) -> None:
 
 
 @st.fragment
-def visor_plano(piso, clave: str, cambiados=frozenset(), archivo: str = "plano.svg") -> None:
+def visor_plano(
+    piso, clave: str, cambiados=frozenset(), archivo: str = "plano.svg",
+    norte: str | None = None,
+) -> None:
     """Vista previa con capas conmutables; solo se vuelve a ejecutar este bloque."""
 
     modo = st.segmented_control(
@@ -142,7 +149,7 @@ def visor_plano(piso, clave: str, cambiados=frozenset(), archivo: str = "plano.s
     enfocar = vista == VISTA_VIVIENDA
 
     st.html(_leyenda_html(piso))
-    _mostrar_svg(piso, capas, clave, enfocar, cambiados)
+    _mostrar_svg(piso, capas, clave, enfocar, cambiados, norte)
 
     if cambiados and "cambios" in capas:
         st.caption("En ámbar parpadeante: lo que cambió en esta versión.")
@@ -157,6 +164,7 @@ def visor_plano(piso, clave: str, cambiados=frozenset(), archivo: str = "plano.s
             uid=f"{clave}-archivo",
             enfocar=enfocar,
             fondo_pagina=True,
+            norte=norte,
         ),
         file_name=archivo,
         mime="image/svg+xml",
@@ -164,8 +172,11 @@ def visor_plano(piso, clave: str, cambiados=frozenset(), archivo: str = "plano.s
     )
 
 
-def tabla_ambientes(piso) -> None:
+def tabla_ambientes(piso, norte: str | None = None) -> None:
     etiquetas = etiquetas_ambientes(piso.distribucion)
+    miran = ventanas_por_ambiente(
+        piso.distribucion, piso.ventanas["ventanas"], norte
+    ) if norte else {}
     st.dataframe(
         [
             {
@@ -173,6 +184,10 @@ def tabla_ambientes(piso) -> None:
                 "Posición (m)": f"({a['x']:g}, {a['y']:g})",
                 "Dimensiones (m)": f"{a['ancho']:g} × {a['largo']:g}",
                 "Área (m²)": round(a.get("area_m2", a["ancho"] * a["largo"]), 2),
+                **(
+                    {"Ventanas hacia": ", ".join(miran.get(a["id"], [])) or "—"}
+                    if norte else {}
+                ),
             }
             for a in piso.distribucion
         ],
@@ -257,6 +272,7 @@ def mostrar_resultado(
     `cambiados` son los ids de ambientes a resaltar en el plano.
     """
 
+    norte = getattr(requerimientos, "norte", None)
     pisos = pisos_de(resultado)
     etiquetas = etiquetas_de_pisos(len(pisos))
 
@@ -284,9 +300,9 @@ def mostrar_resultado(
     archivo = "plano.svg" if len(pisos) == 1 else f"plano_planta_{indice + 1}.svg"
 
     with pestanas[0]:
-        visor_plano(piso, f"{clave}-{indice}", cambiados, archivo)
+        visor_plano(piso, f"{clave}-{indice}", cambiados, archivo, norte)
     with pestanas[1]:
-        tabla_ambientes(piso)
+        tabla_ambientes(piso, norte)
     with pestanas[2]:
         mostrar_validacion_adyacencias(piso.validacion)
     with pestanas[3]:

@@ -99,7 +99,17 @@ def _fecha(texto: str) -> str:
 # INICIO: describir un proyecto o abrir un plano existente
 # ============================================================
 
-def _generar(instruccion: str) -> None:
+# El lado del terreno donde está el norte; None = lo que diga la descripción.
+OPCIONES_NORTE = {
+    "Según la descripción": None,
+    "Al fondo": "fondo",
+    "Hacia la calle": "frente",
+    "A la derecha": "derecha",
+    "A la izquierda": "izquierda",
+}
+
+
+def _generar(instruccion: str, norte: str | None = None) -> None:
 
     if not instruccion.strip():
         st.warning("Primero debes escribir una descripción del proyecto.")
@@ -108,6 +118,8 @@ def _generar(instruccion: str) -> None:
     try:
         with st.spinner("Interpretando los requerimientos..."):
             requerimientos = interpretar_instruccion(instruccion)
+            if norte:
+                requerimientos.norte = norte
 
         if requerimientos.datos_faltantes:
             st.warning(
@@ -299,8 +311,17 @@ def inicio() -> None:
         on_change=_usar_ejemplo,
     )
 
+    norte = st.radio(
+        "¿Dónde está el norte? (opcional)",
+        list(OPCIONES_NORTE),
+        horizontal=True,
+        key="norte",
+        help="Visto desde la calle. Con este dato, la sala y los dormitorios "
+             "se ubican buscando el mejor sol (criterio para Perú).",
+    )
+
     if st.button("Generar plano", type="primary"):
-        _generar(instruccion)
+        _generar(instruccion, OPCIONES_NORTE[norte])
 
     with st.expander("¿Ya tienes un plano? Ábrelo para editarlo (DXF de cualquier programa)"):
         archivo = st.file_uploader(

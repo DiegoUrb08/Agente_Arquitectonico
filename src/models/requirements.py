@@ -1,4 +1,6 @@
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -27,6 +29,9 @@ class RequerimientosArquitectonicos(BaseModel):
 
     # Superficie total deseada para la vivienda.
     area_total_vivienda_m2: float | None = None
+
+    # Lado del terreno donde está el norte (el frente es la calle).
+    norte: Literal["frente", "fondo", "derecha", "izquierda"] | None = None
 
     ambientes: list[Ambiente] = Field(default_factory=list)
 

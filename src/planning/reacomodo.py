@@ -34,6 +34,7 @@ PESO_DESPLAZAMIENTO = 20
 PESO_AREA_VECINOS = 5
 PESO_HUECOS = 30
 PESO_SIN_VENTANA = 2000
+PESO_ORIENTACION = 200
 
 # Al reubicar, quien debe moverse es el ambiente pedido y no su referencia.
 FACTOR_MOVIDO = 0.1
@@ -83,6 +84,7 @@ def _resolver(
     distribucion, nodos, ancho_dm, largo_dm, con_reglas, preferencias,
     peso_area, factores=None, pedido=None, pares_pedidos=(),
     fijos=frozenset(), limites=None, planta_baja=True, cubrir=None,
+    norte=None,
 ):
     """
     `pedido(modelo, variables, adyacencias)` impone el cambio solicitado y
@@ -167,6 +169,7 @@ def _resolver(
         modelo, variables, area_total, ancho_dm, largo_dm
     )
     interiores = optimizador._ambientes_interiores(modelo, ids, variables, bordes)
+    orientacion = optimizador._orientacion(modelo, ids, variables, bordes, norte)
 
     desplazamientos = []
     for ambiente in distribucion:
@@ -188,6 +191,7 @@ def _resolver(
         + sum(desplazamientos)
         + PESO_HUECOS * huecos
         + PESO_SIN_VENTANA * sum(interiores)
+        + PESO_ORIENTACION * sum(orientacion)
         + termino_pedido
     )
 
@@ -240,7 +244,7 @@ def reacomodar_para_area(
     """
     Nueva distribución en la que `identificador` mide `area_m2`, o None.
 
-    `planta` admite `fijos`, `limites` y `planta_baja`.
+    `planta` admite `fijos`, `limites`, `planta_baja` y `norte`.
     """
     nodos = _nodos(
         distribucion,

@@ -18,6 +18,7 @@ from src.geometry.opening_generator import generar_aberturas
 from src.geometry.wall_generator import generar_muros
 from src.geometry.window_generator import generar_ventanas_automaticas
 from src.models.distribucion import validar_esquema_distribucion
+from src.planning.orientacion import nota_de_orientacion
 from src.planning.layout_optimizer import (
     contorno,
     optimizar_distribucion,
@@ -91,7 +92,19 @@ def generar_plano(
 
     plano = construir_plano(distribucion, ancho, largo, ruta_dxf, progreso)
     plano.notas = _notas(requerimientos, distribucion)
+    _anotar_orientacion(plano, requerimientos.norte)
     return plano
+
+
+def _anotar_orientacion(plano, norte) -> None:
+    if not norte:
+        return
+    nota = nota_de_orientacion(
+        plano.distribucion, plano.ventanas["ventanas"], norte,
+        nombres_legibles(plano.distribucion),
+    )
+    if nota:
+        plano.notas.append(nota)
 
 
 def _notas(requerimientos, distribucion) -> list[str]:
@@ -251,6 +264,7 @@ def generar_plano_multipisos(
 
     for plano in resultado.pisos:
         plano.notas = _notas(requerimientos, plano.distribucion)
+        _anotar_orientacion(plano, requerimientos.norte)
 
     resultado.pisos[0].avisos += _relaciones_entre_plantas(
         requerimientos, distribuciones
@@ -401,6 +415,7 @@ def editar_plano(
     ruta_salida,
     solicitud,
     progreso: Callable[[str], None] | None = None,
+    norte: str | None = None,
 ) -> dict:
     """
     Aplica la edición sobre la distribución del DXF y regenera el plano
@@ -422,7 +437,9 @@ def editar_plano(
             "El archivo de salida debe ser diferente del archivo original."
         )
 
-    _, ambientes, terreno, resultados = cargar_y_editar(entrada, solicitud)
+    _, ambientes, terreno, resultados = cargar_y_editar(
+        entrada, solicitud, {"norte": norte}
+    )
 
     xmin, ymin, xmax, ymax = terreno.bounds
     distribucion = distribucion_desde_ambientes(ambientes)

@@ -12,6 +12,7 @@ from src.planning.reglas_acceso import (
     puede_dar_acceso,
     tipo_base,
 )
+from src.planning.reglas_ambientes import AMBIENTES_SIN_VENTANA
 
 
 # ============================================================
@@ -27,6 +28,8 @@ SEPARACION_MINIMA_EXTREMOS = 0.10
 TOLERANCIA = 0.001
 
 ESPESOR_MURO_EXTERIOR_PREDETERMINADO = 0.20
+# Con menos que esto a cada lado de la entrada no cabe una ventana de 0,9 m.
+SITIO_VENTANA_JUNTO_A_PUERTA_M = 1.50
 
 # Desde dónde es preferible abrir una puerta (menor = mejor).
 PREFERENCIA_ORIGEN = {
@@ -256,6 +259,16 @@ def _puerta_exterior(
                 continue
 
             centro = (inicio + fin) / 2
+
+            # En una fachada angosta, la puerta centrada deja sin sitio a la
+            # ventana: se lleva a un extremo.
+            al_lado = (fin - inicio - ancho_puerta_m) / 2
+            if (
+                al_lado < SITIO_VENTANA_JUNTO_A_PUERTA_M
+                and tipo_base(identificador) not in AMBIENTES_SIN_VENTANA
+            ):
+                centro = inicio + margen
+
             # Se aparta un poco de las esquinas cuando hay sitio.
             centro = min(max(centro, inicio + margen), fin - margen)
 

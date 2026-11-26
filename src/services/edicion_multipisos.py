@@ -66,7 +66,7 @@ def _planta_para_agregar(distribuciones, operacion) -> int:
     return habitual
 
 
-def _editar_piso(distribuciones, indice, operacion, terreno):
+def _editar_piso(distribuciones, indice, operacion, terreno, norte=None):
     """Aplica la operación a una planta y devuelve (distribución, resultado)."""
     ancho, largo = terreno
     numeros: dict[str, int] = {}
@@ -79,6 +79,7 @@ def _editar_piso(distribuciones, indice, operacion, terreno):
     planta = {
         "fijos": frozenset({ESCALERA}),
         "planta_baja": indice == 0,
+        "norte": norte,
         "limites": contorno(distribuciones[0]) if indice else None,
     }
     if indice == 0 and len(distribuciones) > 1:
@@ -102,7 +103,9 @@ def _editar_piso(distribuciones, indice, operacion, terreno):
     return nueva, {**resultados[0], "planta": PLANTAS[indice]}
 
 
-def _cambiar_de_planta(distribuciones, operacion, origen, destino, terreno):
+def _cambiar_de_planta(
+    distribuciones, operacion, origen, destino, terreno, norte=None
+):
     """Mover junto a un ambiente de la otra planta: quitar y volver a poner."""
     candidatos = _coincidentes(distribuciones[origen], operacion.ambiente)
     ambiente = max(candidatos, key=lambda a: int(a["id"].rsplit("_", 1)[1]))
@@ -113,6 +116,7 @@ def _cambiar_de_planta(distribuciones, operacion, origen, destino, terreno):
     nuevas[origen], quitado = _editar_piso(
         nuevas, origen,
         EditOperation(tipo="quitar_ambiente", ambiente=ambiente["id"]), terreno,
+        norte,
     )
     relacion = operacion.relacion
     nuevas[destino], agregado = _editar_piso(
@@ -123,7 +127,7 @@ def _cambiar_de_planta(distribuciones, operacion, origen, destino, terreno):
             referencia=operacion.referencia,
             relacion=None if relacion == "lejos_de" else relacion,
         ),
-        terreno,
+        terreno, norte,
     )
     resultado = {
         "accion": "cambiado_de_planta",
@@ -136,7 +140,7 @@ def _cambiar_de_planta(distribuciones, operacion, origen, destino, terreno):
     return nuevas, resultado
 
 
-def _aplicar(distribuciones, operacion, terreno):
+def _aplicar(distribuciones, operacion, terreno, norte=None):
     if operacion.tipo == "agregar_ambiente":
         indice = _planta_para_agregar(distribuciones, operacion)
 
@@ -150,7 +154,8 @@ def _aplicar(distribuciones, operacion, terreno):
             destinos = [pedida] if pedida in destinos else destinos
         if not comunes:
             return _cambiar_de_planta(
-                distribuciones, operacion, origenes[0], destinos[0], terreno
+                distribuciones, operacion, origenes[0], destinos[0], terreno,
+                norte,
             )
         indice = comunes[0]
 
@@ -169,13 +174,13 @@ def _aplicar(distribuciones, operacion, terreno):
 
     nuevas = list(distribuciones)
     nuevas[indice], resultado = _editar_piso(
-        nuevas, indice, operacion, terreno
+        nuevas, indice, operacion, terreno, norte
     )
     return nuevas, resultado
 
 
 def editar_plano_multipisos(
-    resultado, ruta_salida, solicitud, progreso=None
+    resultado, ruta_salida, solicitud, progreso=None, norte=None
 ) -> dict:
     """
     Como `pipeline.editar_plano`, pero sobre un `ResultadoPlanoMultipisos`.
@@ -186,7 +191,9 @@ def editar_plano_multipisos(
     modificaciones = []
 
     for operacion in solicitud.operaciones:
-        distribuciones, hecho = _aplicar(distribuciones, operacion, terreno)
+        distribuciones, hecho = _aplicar(
+            distribuciones, operacion, terreno, norte
+        )
         modificaciones.append(hecho)
 
     plano = construir_multipisos(

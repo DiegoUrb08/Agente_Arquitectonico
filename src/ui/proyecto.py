@@ -246,6 +246,7 @@ def aplicar_edicion(proyecto: dict, texto: str, solicitud) -> None:
     """Aplica la edición al plano actual y añade una versión nueva."""
 
     actual = version_actual(proyecto)
+    norte = getattr(proyecto["requerimientos"], "norte", None)
 
     with tempfile.TemporaryDirectory() as carpeta:
         entrada = Path(carpeta) / "entrada.dxf"
@@ -253,10 +254,12 @@ def aplicar_edicion(proyecto: dict, texto: str, solicitud) -> None:
         entrada.write_bytes(actual["dxf"])
         if isinstance(actual["resultado"], ResultadoPlanoMultipisos):
             resultado = editar_plano_multipisos(
-                actual["resultado"], str(salida), solicitud
+                actual["resultado"], str(salida), solicitud, norte=norte
             )
         else:
-            resultado = editar_plano(str(entrada), str(salida), solicitud)
+            resultado = editar_plano(
+                str(entrada), str(salida), solicitud, norte=norte
+            )
         dxf = salida.read_bytes()
 
     lineas = resumen_modificaciones(resultado["modificaciones"])
