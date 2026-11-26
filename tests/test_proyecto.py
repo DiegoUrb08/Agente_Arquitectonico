@@ -126,15 +126,6 @@ def test_abrir_un_archivo_invalido_da_un_error_claro(contenido):
         pry.abrir_proyecto(contenido, "roto.dxf")
 
 
-def test_se_puede_editar_un_piso_pero_no_varias_plantas(base):
-    unico = base["versiones"][0]["resultado"]
-    varios = ResultadoPlanoMultipisos(pisos=[unico, unico], ruta_dxf=None, numero_pisos=2)
-
-    assert pry.puede_editar(unico) is True
-    assert pry.puede_editar(varios) is False
-    assert len(pry.pisos_de(varios)) == 2
-
-
 def test_resumen_de_modificaciones():
     lineas = pry.resumen_modificaciones([
         {"ambiente": "comedor", "id": "comedor_1", "area_anterior": 12.0, "area_nueva": 8.0},

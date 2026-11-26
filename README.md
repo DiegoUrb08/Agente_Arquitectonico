@@ -48,11 +48,40 @@ asistente que crea el archivo `.env` por ti.
    ventanas, losa y mobiliario), que se abre en Revit 2020+, ArchiCAD 23+,
    BlenderBIM o visores gratuitos como BIM Vision.
 
-Por ahora los cambios admitidos son cambiar el área de un ambiente y moverlo
-respecto a otro, y solo en planos de una planta. Al reubicar, o al ampliar sin
-sitio libre, se reorganiza la planta alterándola lo menos posible (los
-ambientes pueden ceder hasta un 15 % de su superficie) y el chat dice cuáles
-cambiaron. Si dices «el dormitorio» y hay varios, vale cualquiera.
+### Qué puedes pedir en la conversación
+
+| Cambio | Ejemplo |
+|---|---|
+| Cambiar un área | «amplía la sala a 24 m²» |
+| Reubicar | «pon la cocina al lado del dormitorio» |
+| Agregar | «agrega un estudio de 9 m² junto a la sala» |
+| Quitar | «quita un baño» |
+| Renombrar | «llama cocina al ambiente 1» |
+| En dos plantas | «agrega un baño abajo», «pasa el estudio a la planta baja» |
+
+Si no hay sitio, se reorganiza la planta alterándola lo menos posible y el chat
+dice qué más cambió. Si dices «el dormitorio» y hay varios, al reubicar vale
+cualquiera y al quitar se elimina el último.
+
+### Casas de dos plantas
+
+La planta alta lleva dormitorios y baños (uno baja si arriba hay dos o más),
+la escalera queda en la misma posición en ambas y se busca que compartan
+contorno. Si tras un cambio la planta alta sobresale, el plano lo avisa. La
+escalera no se puede editar. El `.dxf` descargado, de una o dos plantas, se
+puede volver a abrir en la app para seguir editándolo.
+
+### Abrir un DXF de otro programa
+
+«¿Ya tienes un plano?» acepta DXF de AutoCAD, LibreCAD u otros programas. Las
+habitaciones se detectan por sus contornos cerrados o, si no los hay, por los
+espacios que encierran los muros (los vanos de puerta de hasta 0,9 m se
+cierran). Se deducen las unidades, se endereza un plano girado y los nombres
+se traducen («LIVING» → sala, «SS.HH.» → baño, «Dorm. 2» → dormitorio). Las
+habitaciones sin nombre reconocible se llaman «ambiente N» y se pueden
+renombrar por chat. Las formas irregulares se aproximan a rectángulos, y
+muros, puertas, ventanas y muebles se dibujan de nuevo. Dos grupos de
+habitaciones separados se toman como planta baja y alta. No admite DWG.
 
 ## Reglas de distribución
 
@@ -217,7 +246,7 @@ server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
 static/three/           # Copia fija de Three.js 0.160.0 (MIT) para la vista 3D sin internet
-tests/                  # 404 tests pytest
+tests/                  # 460 tests pytest
 ```
 
 ---

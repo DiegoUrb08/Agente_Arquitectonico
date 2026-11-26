@@ -7,6 +7,9 @@ def compactacion_breve(monkeypatch):
     monkeypatch.setattr(
         "src.planning.layout_optimizer.TIEMPO_COMPACTACION_SEGUNDOS", 1
     )
+    monkeypatch.setattr(
+        "src.planning.reacomodo.TIEMPO_REACOMODO_SEGUNDOS", 3
+    )
 
 
 @pytest.fixture

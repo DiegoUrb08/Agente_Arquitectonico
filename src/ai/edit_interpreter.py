@@ -18,7 +18,10 @@ class EditOperation(BaseModel):
 
     tipo: Literal[
         "modificar_area",
-        "mover_ambiente"
+        "mover_ambiente",
+        "agregar_ambiente",
+        "quitar_ambiente",
+        "renombrar_ambiente"
     ] = Field(
         description="Tipo de modificacion solicitada"
     )
@@ -52,6 +55,16 @@ class EditOperation(BaseModel):
         description="Relacion espacial deseada"
     )
 
+    nombre_nuevo: str | None = Field(
+        default=None,
+        description="Nuevo tipo del ambiente, solo para renombrar_ambiente"
+    )
+
+    planta: Literal["baja", "alta"] | None = Field(
+        default=None,
+        description="Planta, solo si el usuario la menciona"
+    )
+
     @model_validator(mode="after")
     def validar_operacion(self):
 
@@ -67,6 +80,9 @@ class EditOperation(BaseModel):
                     "Para mover un ambiente se necesita una referencia "
                     "y una relacion espacial."
                 )
+
+        if self.tipo == "renombrar_ambiente" and not self.nombre_nuevo:
+            raise ValueError("Para renombrar se necesita el nombre nuevo.")
 
         return self
 
@@ -119,10 +135,21 @@ def interpretar_edicion(instruccion: str) -> EditRequest:
        una direccion solo si el usuario la dice.
        Escribe los nombres como el usuario; no agregues numeros que no dijo.
     6. Si faltan datos indispensables, no inventes valores.
-    7. Si una instruccion no se puede representar con las operaciones
+    7. Para anadir un ambiente usa agregar_ambiente: "ambiente" es el tipo
+       en singular ("estudio", "bano", "dormitorio"); area_objetivo,
+       referencia y relacion solo si el usuario las dice. Si pide varios,
+       una operacion por cada uno.
+       Para eliminar uno usa quitar_ambiente.
+       "planta" es "baja" para abajo o primer piso y "alta" para arriba o
+       segundo piso; null si no lo dice.
+       Para cambiar el uso o el nombre de un ambiente sin moverlo
+       ("llama cocina al ambiente 1", "el ambiente 2 es un baño") usa
+       renombrar_ambiente: "ambiente" es el actual y "nombre_nuevo" el
+       tipo nuevo en singular.
+    8. Si una instruccion no se puede representar con las operaciones
        disponibles, explica la limitacion en observaciones.
-    8. No generes codigo Python ni comandos DXF.
-    9. Devuelve una estructura compatible con el esquema proporcionado.
+    9. No generes codigo Python ni comandos DXF.
+    10. Devuelve una estructura compatible con el esquema proporcionado.
     """
 
     esquema = EditRequest.model_json_schema()

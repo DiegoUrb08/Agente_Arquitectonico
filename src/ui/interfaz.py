@@ -159,7 +159,7 @@ def inicio() -> None:
     if st.button("Generar plano", type="primary"):
         _generar(instruccion)
 
-    with st.expander("¿Ya tienes un plano? Ábrelo para editarlo"):
+    with st.expander("¿Ya tienes un plano? Ábrelo para editarlo (DXF de cualquier programa)"):
         archivo = st.file_uploader(
             "Subir plano arquitectónico (.dxf)", type=["dxf"], key="archivo_dxf"
         )
@@ -204,7 +204,6 @@ def espacio_de_trabajo(proyecto: dict) -> None:
 
     actual = pry.version_actual(proyecto)
     versiones = len(proyecto["versiones"])
-    editable = pry.puede_editar(actual["resultado"])
 
     izquierda, derecha = st.columns([2, 3], gap="large")
 
@@ -213,7 +212,6 @@ def espacio_de_trabajo(proyecto: dict) -> None:
         caja = st.container(height=460, border=True)
         entrada = st.chat_input(
             "Pide un cambio al plano…",
-            disabled=not editable,
             key="entrada_chat",
         )
         c_deshacer, c_nuevo = st.columns(2)

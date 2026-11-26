@@ -5,17 +5,22 @@ import ezdxf
 from shapely.geometry import Polygon, box
 
 from src.cad.dxf_base import (
+    registrar_metadatos,
     APP_ID,
     CAPA_AMBIENTES,
     CAPA_TERRENO,
     CAPA_TEXTOS,
     UNIDADES_METROS,
 )
+from src.models.defaults import obtener_area_referencia
 from src.planning.reacomodo import (
+    agregar_a_planta,
     cumple_relacion,
+    quitar_de_planta,
     reacomodar_para_area,
     reubicar_ambiente,
 )
+from src.planning.reglas_ambientes import AMBIENTES_VALIDOS
 from src.utils.texto import normalizar_nombre
 
 
@@ -119,11 +124,13 @@ def obtener_ambientes(modelo):
     return ambientes
 
 
-def obtener_terreno(modelo):
+def obtener_terrenos(modelo):
 
     """
-    Busca el poligono que representa el terreno.
+    Poligonos de terreno del DXF, de abajo hacia arriba (uno por planta).
     """
+
+    terrenos = []
 
     for entidad in modelo.query("LWPOLYLINE"):
 
@@ -141,11 +148,14 @@ def obtener_terreno(modelo):
         terreno = Polygon(puntos)
 
         if terreno.is_valid and terreno.area > 0:
-            return terreno
+            terrenos.append(terreno)
 
-    raise ValueError(
-        "No se encontro un terreno valido en el DXF."
-    )
+    if not terrenos:
+        raise ValueError(
+            "No se encontro un terreno valido en el DXF."
+        )
+
+    return sorted(terrenos, key=lambda t: t.bounds[1])
 
 
 def resolver_ambiente(ambientes, referencia):
@@ -335,7 +345,8 @@ def modificar_area(
     ambientes,
     terreno,
     nombre,
-    area_objetivo
+    area_objetivo,
+    planta=None
 ):
 
     """
@@ -348,7 +359,9 @@ def modificar_area(
     incluye `ajustes` con los demas ambientes cuya area cambio.
     """
 
+    planta = planta or {}
     ambiente = resolver_ambiente(ambientes, nombre)
+    _comprobar_modificable(ambiente, planta)
 
     poligono = ambiente["poligono"]
 
@@ -374,7 +387,15 @@ def modificar_area(
         _candidatos_redimension(poligono, nuevo_ancho, nuevo_alto)
     ):
 
-        error = _comprobar_ubicacion(candidato, ambiente, ambientes, terreno)
+        limites = planta.get("limites")
+        zona = box(*limites) if limites else terreno
+
+        error = _comprobar_ubicacion(candidato, ambiente, ambientes, zona)
+
+        if not error and not _cubre(
+            planta.get("cubrir"), candidato, ambiente, ambientes
+        ):
+            error = "La planta alta quedaria sobresaliendo."
 
         if error:
             primer_error = primer_error or error
@@ -394,10 +415,11 @@ def modificar_area(
             modelo, ambiente, min(validos, key=lambda v: v[:2])[2]
         )
 
-    elif area_objetivo > area_actual:
+    elif area_objetivo > area_actual or planta.get("cubrir"):
 
         ajustes = _reacomodar(
-            modelo, ambientes, terreno, ambiente, area_objetivo, primer_error
+            modelo, ambientes, terreno, ambiente, area_objetivo, primer_error,
+            planta
         )
 
     else:
@@ -439,8 +461,39 @@ def _aplicar_poligono(modelo, ambiente, nuevo_poligono):
             texto.dxf.text = f"{nuevo_poligono.area:.2f} m2"
 
 
+def _cubre(contorno, candidato, ambiente, ambientes):
+
+    """
+    True si, con `candidato` en lugar de `ambiente`, la planta sigue
+    llegando hasta los bordes de `contorno`.
+    """
+
+    if not contorno:
+        return True
+
+    cajas = [
+        (candidato if a is ambiente else a["poligono"]).bounds
+        for a in ambientes
+    ]
+    x0, y0, x1, y1 = contorno
+
+    return (
+        min(c[0] for c in cajas) <= x0 + TOLERANCIA
+        and min(c[1] for c in cajas) <= y0 + TOLERANCIA
+        and max(c[2] for c in cajas) >= x1 - TOLERANCIA
+        and max(c[3] for c in cajas) >= y1 - TOLERANCIA
+    )
+
+
+def _comprobar_modificable(ambiente, planta):
+    if ambiente["id"] in planta.get("fijos", ()):
+        raise ValueError(
+            f"{_legible(ambiente)} une las dos plantas y no se puede cambiar."
+        )
+
+
 def _reacomodar(
-    modelo, ambientes, terreno, ambiente, area_objetivo, motivo
+    modelo, ambientes, terreno, ambiente, area_objetivo, motivo, planta
 ):
 
     """
@@ -452,7 +505,7 @@ def _reacomodar(
 
     nueva = reacomodar_para_area(
         _distribucion_en_terreno(ambientes, terreno),
-        ambiente["id"], area_objetivo, x1 - x0, y1 - y0
+        ambiente["id"], area_objetivo, x1 - x0, y1 - y0, **planta
     )
 
     if nueva is None:
@@ -564,7 +617,8 @@ def mover_ambiente(
     terreno,
     nombre,
     referencia,
-    relacion
+    relacion,
+    planta=None
 ):
 
     """
@@ -576,7 +630,13 @@ def mover_ambiente(
     if relacion not in RELACIONES:
         raise ValueError(f"Relacion espacial desconocida: {relacion}.")
 
-    candidatos = resolver_referencias(ambientes, nombre)
+    planta = planta or {}
+    candidatos = [
+        a for a in resolver_referencias(ambientes, nombre)
+        if a["id"] not in planta.get("fijos", ())
+    ]
+    if not candidatos:
+        _comprobar_modificable(resolver_ambiente(ambientes, nombre), planta)
     guias = resolver_referencias(ambientes, referencia)
 
     parejas = [(a, g) for a in candidatos for g in guias if a is not g]
@@ -616,7 +676,8 @@ def mover_ambiente(
         [ref["id"] for ref in referencias],
         relacion,
         x1 - x0,
-        y1 - y0
+        y1 - y0,
+        **planta
     )
 
     if nueva is None:
@@ -673,7 +734,219 @@ def mover_ambiente(
 
 
 # ==========================================
-# 4. MOTOR PRINCIPAL DE EDICION
+# 4. AGREGAR Y QUITAR AMBIENTES
+# ==========================================
+
+def renombrar_ambiente(
+    modelo, ambientes, nombre, nombre_nuevo, planta=None, numeros=None
+):
+
+    """Cambia el tipo de un ambiente sin moverlo ("llama cocina al ambiente 1")."""
+
+    planta = planta or {}
+
+    if not nombre_nuevo:
+        raise ValueError("Indica el nuevo nombre del ambiente.")
+
+    ambiente = resolver_ambiente(ambientes, nombre)
+    _comprobar_modificable(ambiente, planta)
+
+    otros = [a for a in ambientes if a is not ambiente]
+    nuevo = nombre_de_ambiente(nombre_nuevo, otros)
+
+    if normalizar_nombre(nuevo) == normalizar_nombre(ambiente["nombre"]):
+        raise ValueError(f"{_legible(ambiente)} ya es {nuevo}.")
+
+    anterior = ambiente["id"]
+    identificador = _siguiente_id(otros, nuevo, numeros)
+
+    for entidad in [ambiente["entidad"], *buscar_textos(modelo, ambiente)]:
+        registrar_metadatos(entidad, identificador, nuevo)
+
+    ambiente["id"] = identificador
+    ambiente["nombre"] = nuevo
+
+    return {
+        "accion": "renombrado",
+        "ambiente": nuevo,
+        "id": identificador,
+        "id_anterior": anterior,
+    }
+
+
+def nombre_de_ambiente(texto, ambientes=()):
+
+    """
+    Nombre de catalogo para lo que escribio el usuario ("estudios" no vale).
+    Si ya hay ambientes de ese tipo, conserva su escritura (p. ej. con ñ).
+    """
+
+    clave = normalizar_nombre(texto)
+
+    for ambiente in ambientes:
+        if normalizar_nombre(ambiente["nombre"]) == clave:
+            return ambiente["nombre"]
+
+    if clave not in AMBIENTES_VALIDOS and not clave.startswith(
+        ("dormitorio", "bano")
+    ):
+        catalogo = ", ".join(sorted(AMBIENTES_VALIDOS))
+        raise ValueError(
+            f"No puedo agregar '{texto}'. Los tipos disponibles son: "
+            f"{catalogo}."
+        )
+
+    return texto.strip().lower()
+
+
+def _siguiente_id(ambientes, nombre, numeros):
+
+    base = normalizar_nombre(nombre)
+    usados = [
+        int(a["id"].rsplit("_", 1)[1])
+        for a in ambientes
+        if normalizar_nombre(a["id"].rsplit("_", 1)[0]) == base
+    ]
+    return f"{base}_{max([*usados, (numeros or {}).get(base, 0)]) + 1}"
+
+
+def agregar_ambiente(
+    modelo, ambientes, terreno, nombre, area_objetivo=None, referencia=None,
+    relacion=None, planta=None, numeros=None
+):
+
+    """
+    Incorpora un ambiente nuevo y reorganiza la planta. `numeros` es el
+    ultimo numero usado de cada tipo en otras plantas.
+    """
+
+    planta = planta or {}
+    nombre = nombre_de_ambiente(nombre, ambientes)
+    area = area_objetivo or obtener_area_referencia(nombre)
+    identificador = _siguiente_id(ambientes, nombre, numeros)
+
+    guias = (
+        resolver_referencias(ambientes, referencia) if referencia else []
+    )
+    x0, y0, x1, y1 = terreno.bounds
+
+    nueva = agregar_a_planta(
+        _distribucion_en_terreno(ambientes, terreno),
+        {"id": identificador, "nombre": nombre, "area_m2": area},
+        x1 - x0, y1 - y0,
+        referencias=[g["id"] for g in guias],
+        relacion=relacion or "junto_a",
+        id_pasillo=_siguiente_id(ambientes, "pasillo", numeros),
+        **planta
+    )
+
+    if nueva is None:
+        raise ValueError(
+            f"No es posible agregar {nombre} de {area:g} m2 en este terreno: "
+            "prueba con un area menor o quita algun ambiente."
+        )
+
+    existentes = {a["id"] for a in ambientes}
+
+    for datos in nueva:
+
+        if datos["id"] in existentes:
+            continue
+
+        x, y = datos["x"] + x0, datos["y"] + y0
+        poligono = box(x, y, x + datos["ancho"], y + datos["largo"])
+        entidad = modelo.add_lwpolyline(
+            list(poligono.exterior.coords)[:-1], close=True,
+            dxfattribs={"layer": CAPA_AMBIENTES}
+        )
+        registrar_metadatos(entidad, datos["id"], datos["nombre"])
+        ambientes.append({
+            "entidad": entidad, "id": datos["id"],
+            "nombre": datos["nombre"], "poligono": poligono
+        })
+
+    ajustes = _aplicar_distribucion(modelo, ambientes, terreno, nueva)
+    anadido = next(a for a in ambientes if a["id"] == identificador)
+    tambien = [
+        d["id"] for d in nueva
+        if d["id"] not in existentes and d["id"] != identificador
+    ]
+
+    resultado = {
+        "accion": "agregado",
+        "ambiente": nombre,
+        "id": identificador,
+        "area_nueva": round(anadido["poligono"].area, 2)
+    }
+
+    if tambien:
+        resultado["tambien"] = tambien
+
+    if ajustes:
+        resultado["ajustes"] = ajustes
+
+    return resultado
+
+
+def quitar_ambiente(modelo, ambientes, terreno, nombre, planta=None):
+
+    """
+    Elimina un ambiente; los demas ocupan su sitio. Si hay varios con ese
+    nombre ("quita un bano"), quita el ultimo.
+    """
+
+    planta = planta or {}
+    candidatos = resolver_referencias(ambientes, nombre)
+    ambiente = max(
+        candidatos, key=lambda a: int(a["id"].rsplit("_", 1)[1])
+    )
+    _comprobar_modificable(ambiente, planta)
+
+    if len(ambientes) < 2:
+        raise ValueError("No se puede quitar el unico ambiente de la planta.")
+
+    x0, y0, x1, y1 = terreno.bounds
+
+    nueva = quitar_de_planta(
+        _distribucion_en_terreno(ambientes, terreno),
+        ambiente["id"], x1 - x0, y1 - y0, **planta
+    )
+
+    if nueva is None:
+        raise ValueError(
+            f"No pude reorganizar la planta sin {_legible(ambiente)}."
+        )
+
+    quedan = {d["id"] for d in nueva}
+    tambien = []
+
+    for otro in [a for a in ambientes if a["id"] not in quedan]:
+        for texto in buscar_textos(modelo, otro):
+            modelo.delete_entity(texto)
+        modelo.delete_entity(otro["entidad"])
+        ambientes.remove(otro)
+        if otro is not ambiente:
+            tambien.append(otro["id"])
+
+    resultado = {
+        "accion": "quitado",
+        "ambiente": ambiente["nombre"],
+        "id": ambiente["id"]
+    }
+
+    if tambien:
+        resultado["tambien"] = tambien
+
+    ajustes = _aplicar_distribucion(modelo, ambientes, terreno, nueva)
+
+    if ajustes:
+        resultado["ajustes"] = ajustes
+
+    return resultado
+
+
+# ==========================================
+# 5. MOTOR PRINCIPAL DE EDICION
 # ==========================================
 
 ADVERTENCIA_ELEMENTOS = (
@@ -683,13 +956,22 @@ ADVERTENCIA_ELEMENTOS = (
 )
 
 
-def cargar_y_editar(ruta_entrada, solicitud):
+def tiene_metadatos(documento) -> bool:
+
+    """True si el DXF lo genero este proyecto (ambientes con XDATA)."""
+
+    return any(
+        obtener_nombre(entidad)
+        for entidad in documento.modelspace().query("LWPOLYLINE")
+        if entidad.dxf.layer == CAPA_AMBIENTES
+    )
+
+
+def _abrir_documento(ruta_entrada):
 
     """
-    Abre el DXF y aplica las operaciones en memoria.
-
-    Con `solicitud=None` solo lo abre, sin modificar nada.
-    Devuelve (documento, ambientes, terreno, resultados) sin guardar.
+    Abre un DXF generado por el proyecto y devuelve
+    (documento, ambientes, terrenos).
     """
 
     entrada = Path(ruta_entrada)
@@ -712,7 +994,7 @@ def cargar_y_editar(ruta_entrada, solicitud):
     modelo = documento.modelspace()
 
     ambientes = obtener_ambientes(modelo)
-    terreno = obtener_terreno(modelo)
+    terrenos = obtener_terrenos(modelo)
 
     if not ambientes:
         raise ValueError(
@@ -720,20 +1002,173 @@ def cargar_y_editar(ruta_entrada, solicitud):
             "Genera nuevamente el plano con el generador actualizado."
         )
 
+    return documento, ambientes, terrenos
+
+
+def _ids_unicos(distribuciones):
+
+    """
+    Renumera los ids repetidos entre plantas (DXF de versiones
+    anteriores). La escalera es la misma en todas.
+    """
+
+    ocupados = {a["id"] for d in distribuciones for a in d}
+    usados = set()
+
+    for distribucion in distribuciones:
+
+        for ambiente in distribucion:
+
+            base = ambiente["id"].rsplit("_", 1)[0]
+
+            if base != "escalera" and ambiente["id"] in usados:
+
+                numero = 1
+
+                while f"{base}_{numero}" in ocupados:
+                    numero += 1
+
+                ambiente["id"] = f"{base}_{numero}"
+                ocupados.add(ambiente["id"])
+
+            usados.add(ambiente["id"])
+
+    return distribuciones
+
+
+def leer_plantas(ruta_entrada):
+
+    """
+    Distribucion de cada planta del DXF, con coordenadas relativas a su
+    terreno. Devuelve (distribuciones, ancho, largo), de abajo hacia arriba.
+    """
+
+    _, ambientes, terrenos = _abrir_documento(ruta_entrada)
+
+    por_terreno = [[] for _ in terrenos]
+
+    for ambiente in ambientes:
+
+        punto = ambiente["poligono"].representative_point()
+        indice = next(
+            (i for i, t in enumerate(terrenos) if t.covers(punto)),
+            None
+        )
+
+        if indice is None:
+            raise ValueError(
+                f"El ambiente {ambiente['id'] or ambiente['nombre']} "
+                "esta fuera del terreno."
+            )
+
+        por_terreno[indice].append(ambiente)
+
+    plantas = [
+        (terreno, suyos)
+        for terreno, suyos in zip(terrenos, por_terreno)
+        if suyos
+    ]
+
+    if len(plantas) > 2:
+        raise ValueError("Solo se admiten planos de hasta dos plantas.")
+
+    distribuciones = []
+
+    for terreno, suyos in plantas:
+
+        x0, y0 = terreno.bounds[:2]
+        distribucion = distribucion_desde_ambientes(suyos)
+
+        for ambiente in distribucion:
+            ambiente["x"] = round(ambiente["x"] - x0, 3)
+            ambiente["y"] = round(ambiente["y"] - y0, 3)
+
+        distribuciones.append(distribucion)
+
+    xmin, ymin, xmax, ymax = plantas[0][0].bounds
+
+    return (
+        _ids_unicos(distribuciones),
+        round(xmax - xmin, 3),
+        round(ymax - ymin, 3),
+    )
+
+
+def cargar_y_editar(ruta_entrada, solicitud, planta=None, numeros=None):
+
+    """
+    Abre el DXF y aplica las operaciones en memoria.
+
+    En una casa de varias plantas, `planta` fija la escalera y los limites
+    (ver `reacomodo`) y `numeros` evita repetir ids de otras plantas.
+
+    Con `solicitud=None` solo lo abre, sin modificar nada.
+    Devuelve (documento, ambientes, terreno, resultados) sin guardar.
+    """
+
+    documento, ambientes, terrenos = _abrir_documento(ruta_entrada)
+
+    if len(terrenos) > 1:
+        raise ValueError(
+            "Este DXF tiene varias plantas: abrelo desde la aplicacion."
+        )
+
+    modelo = documento.modelspace()
+    terreno = terrenos[0]
+
     resultados = []
 
     operaciones = solicitud.operaciones if solicitud is not None else []
 
     for operacion in operaciones:
 
-        if operacion.tipo == "modificar_area":
+        if getattr(operacion, "planta", None) == "alta" and planta is None:
+            raise ValueError("Este plano tiene una sola planta.")
+
+        if operacion.tipo == "agregar_ambiente":
+
+            resultados.append(agregar_ambiente(
+                modelo=modelo,
+                ambientes=ambientes,
+                terreno=terreno,
+                nombre=operacion.ambiente,
+                area_objetivo=operacion.area_objetivo,
+                referencia=operacion.referencia,
+                relacion=operacion.relacion,
+                planta=planta,
+                numeros=numeros
+            ))
+
+        elif operacion.tipo == "renombrar_ambiente":
+
+            resultados.append(renombrar_ambiente(
+                modelo=modelo,
+                ambientes=ambientes,
+                nombre=operacion.ambiente,
+                nombre_nuevo=operacion.nombre_nuevo,
+                planta=planta,
+                numeros=numeros
+            ))
+
+        elif operacion.tipo == "quitar_ambiente":
+
+            resultados.append(quitar_ambiente(
+                modelo=modelo,
+                ambientes=ambientes,
+                terreno=terreno,
+                nombre=operacion.ambiente,
+                planta=planta
+            ))
+
+        elif operacion.tipo == "modificar_area":
 
             resultados.append(modificar_area(
                 modelo=modelo,
                 ambientes=ambientes,
                 terreno=terreno,
                 nombre=operacion.ambiente,
-                area_objetivo=operacion.area_objetivo
+                area_objetivo=operacion.area_objetivo,
+                planta=planta
             ))
 
         elif operacion.tipo == "mover_ambiente":
@@ -744,7 +1179,8 @@ def cargar_y_editar(ruta_entrada, solicitud):
                 terreno=terreno,
                 nombre=operacion.ambiente,
                 referencia=operacion.referencia,
-                relacion=operacion.relacion
+                relacion=operacion.relacion,
+                planta=planta
             ))
 
     return documento, ambientes, terreno, resultados

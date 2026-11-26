@@ -82,7 +82,7 @@
 - `editar_plano` regenera muros, puertas, aberturas y mobiliario (se recoloca con las plantillas, no se conservan posiciones previas) y, si un ambiente que actúa de «nudo» cambia mucho de tamaño, puede quedar sin pared compartida con algún vecino (se avisa; no se reubican los vecinos).
 - `editar_dxf` (edición directa) sigue sin recalcular muros ni puertas.
 - Las ventanas tienen ancho fijo por tipo de ambiente (sin altura de alféizar ni orientación solar) y se colocan en cualquier pared exterior, incluso la que da a un hueco interior entre ambientes.
-- El editor solo opera con habitaciones rectangulares y DXF en metros.
+- El editor solo opera con habitaciones rectangulares (los DXF de otros programas se aproximan al abrirlos).
 - En distribuciones muy compactas, `modificar_area` y `mover_ambiente` suelen rechazar el cambio por falta de espacio (comportamiento correcto, pero limitante).
 - El CI de GitHub Actions pasó en su primer run (2026-11-24, 1 min 11 s). Aviso pendiente: `actions/checkout@v4` y `actions/setup-python@v5` usan Node.js 20, que GitHub está retirando (hoy se fuerza Node 24); conviene subir sus versiones.
 
@@ -265,7 +265,7 @@ Plan acordado: estilo "blueprint" oscuro, espacio de trabajo único (fase 3) y f
 50. **Fallo latente corregido** (`app.py`): el `print` del mensaje de bienvenida (con emojis) lanzaba `UnicodeEncodeError` cuando la salida no es UTF-8 (p. ej. redirigida a un archivo). Al ser un `ValueError`, la pantalla de bienvenida lo confundía con un error de configuración (y antes rompía la app). Ahora el aviso es opcional y va fuera de la validación. Test de regresión incluido; se descubrió con las capturas reales.
 51. Tests: `test_proyecto.py` (14), `test_resultados_ui.py` (11, flujo completo con `AppTest`) y `tests/plano_fijo.py` (plano determinista: el optimizador no lo es y el editor rechaza cambios según la distribución).
 
-**Límites conocidos del chat de edición:** solo hay dos operaciones (cambiar el área de un ambiente y moverlo respecto a otro); "agrega una piscina" o "añade un baño" se rechazan con un mensaje claro. No admite planos de varias plantas (el chat se desactiva y lo explica). El editor puede dejar ambientes sin contacto (se avisa en el chat).
+*(Histórico; lo del chat se resolvió el 2026-11-26.)* **Límites conocidos del chat de edición:** solo hay dos operaciones (cambiar el área de un ambiente y moverlo respecto a otro); "agrega una piscina" o "añade un baño" se rechazan con un mensaje claro. No admite planos de varias plantas (el chat se desactiva y lo explica). El editor puede dejar ambientes sin contacto (se avisa en el chat).
 
 **Resultado: 264 tests pasan, 0 skipped.**
 
@@ -280,7 +280,7 @@ Plan acordado: estilo "blueprint" oscuro, espacio de trabajo único (fase 3) y f
 
 **Resultado: 290 tests pasan, 0 skipped.**
 
-Ideas siguientes: peticiones que cambian el programa ("agrega un estudio") regenerando el plano a partir de la descripción ampliada; edición de varias plantas; actualizar las versiones de `actions/checkout` y `actions/setup-python` (Node 20); probar Claude con una clave real.
+*(Histórico; lo del chat se resolvió el 2026-11-26.)* Ideas siguientes: peticiones que cambian el programa ("agrega un estudio") regenerando el plano a partir de la descripción ampliada; edición de varias plantas; actualizar las versiones de `actions/checkout` y `actions/setup-python` (Node 20); probar Claude con una clave real.
 
 ## Nuevas prioridades — 2026-11-25
 
@@ -332,25 +332,49 @@ Cada ambiente tiene una recta de ancho (junto a la pared superior) y otra de lar
 - Se miden **entre ejes de muro**, igual que las áreas y el cuadro de áreas; la luz libre interior es unos 10 a 20 cm menor.
 - No se muestran en la vista 3D ni en el IFC.
 
-## Acciones pendientes (priorizadas) — revisión 2026-11-24
+## Dos plantas y cambios de programa por chat (2026-11-26)
 
-### Prioridad alta: antes de publicar en GitHub
-- **Probar `ClaudeProvider` con una clave real** de Anthropic (una llamada de interpretación y una de edición). Sin probar a 2026-11-24: el dueño del proyecto no tiene saldo de API y decidió no gastar. Comprobado sin red: el SDK acepta los parámetros enviados y el cuerpo de la petición coincide con la documentación; README y `.env.example` avisan de que no está probado. Coste estimado de una prueba: ~2-3 centavos con `claude-opus-5-5` por plano generado, ~0,1 centavos con `claude-haiku-5-5`.
-- **Refusal fallbacks de Claude**: la API admite reintentar automáticamente en otro modelo cuando un clasificador de seguridad rechaza la petición (parámetro `fallbacks` en el endpoint beta). No se activó porque no se pudo probar; hoy un rechazo se muestra como error claro.
+### Casas de dos plantas — ✅ CORREGIDAS
+- **Fallo corregido:** con relaciones entre ambientes (p. ej. sala junto a cocina) la generación fallaba con «No existe el ambiente 'sala'», porque cada planta recibía todas las relaciones. Ahora cada planta recibe las que puede cumplir y las que quedan entre plantas se avisan.
+- Escalera en la misma posición en ambas plantas y contorno compartido: la planta alta se resuelve dentro del contorno de la baja, ajustando áreas (`FACTORES_PLANTA_ALTA`, la baja puede crecer hasta ×1,5). Si no cabe, se relaja y se avisa.
+- Con dos o más baños arriba y ninguno abajo, uno baja.
+- Identificadores únicos en toda la casa (la escalera es común); antes se repetían.
+- También corregido: la suma de áreas de toda la casa se comparaba contra una sola planta.
+- Medido: seis programas × 2 corridas, escalera alineada y mismo contorno en las 12, ocupación 93–100 %, de 3 a 17 s.
 
-### Prioridad media: calidad y robustez
-- **Proxy con URL fija**: named tunnel de Cloudflare con dominio propio, o despliegue en Render. Con el túnel rápido la URL cambia en cada reinicio.
-- **Rate limit en memoria**: se reinicia con el proceso y es válido solo para un proceso. Suficiente para la demo; no escala a varios workers.
-- **Re-ejecutar el benchmark con Groq** (`scripts/benchmark_llm.py`) para comparar calidad y tiempos frente a Qwen3:8b local. Es una sugerencia, no un hallazgo previo.
+### Agregar y quitar ambientes por chat — ✅ IMPLEMENTADO
+- Operaciones `agregar_ambiente` y `quitar_ambiente` (con área, referencia, relación y planta opcionales). Reorganizan la planta partiendo de la actual (`agregar_a_planta`, `quitar_de_planta`); al agregar se añade pasillo si hace falta; solo tipos del catálogo.
 
-### Funcionalidad del plano (de "Limitaciones conocidas")
-- `editar_dxf` (edición directa) no recalcula muros ni puertas.
-- `editar_plano` no reubica los vecinos cuando un ambiente "nudo" cambia mucho de tamaño.
-- Ventanas: sin altura de alféizar ni orientación solar; se colocan incluso en un muro que da a un hueco interior.
-- El editor solo opera con habitaciones rectangulares y DXF en metros.
-- En distribuciones compactas, `modificar_area` y `mover_ambiente` rechazan cambios por falta de espacio.
+### Edición de dos plantas — ✅ IMPLEMENTADA
+- `src/services/edicion_multipisos.py`: cada operación se aplica a su planta con el editor de siempre. Admite «arriba/abajo» y mover un ambiente de una planta a otra. La escalera no se toca; la planta baja procura seguir cubriendo a la alta.
 
-### Nuevas funciones
+### Abrir un DXF de dos plantas — ✅ IMPLEMENTADO
+- `leer_plantas` separa los ambientes por terreno (de abajo arriba) y reconstruye ambas plantas; el proyecto abierto se edita como uno recién generado. En DXF antiguos con ids repetidos entre plantas, se renumeran.
+- Medido: en tres casas generadas, geometría, puertas y ventanas idénticas al reabrir, también tras editar y volver a abrir.
+- Límites: solo DXF de este proyecto y hasta dos plantas; los muros, puertas, ventanas y muebles se recalculan (se pierden cambios hechos a mano en CAD), y no se recuperan la descripción original ni sus avisos de relaciones.
+
+### Abrir DXF de otros programas — ✅ IMPLEMENTADO
+- `src/cad/importador_dxf.py` (`importar_dxf`) cuando el DXF no tiene los metadatos del agente:
+  - Lectura tolerante (`ezdxf.recover` si el archivo está algo dañado); explota bloques y atributos; salta capas apagadas o congeladas.
+  - Unidades por `$INSUNITS` o, si faltan o dan un tamaño absurdo, deducidas por el tamaño del dibujo (m, cm o mm).
+  - Endereza planos girados (ángulo dominante de los segmentos).
+  - Habitaciones por contornos cerrados (polilíneas y sombreados, sin perímetros, duplicados ni muebles) o por muros: se engrosan 0,46 m con extremos rectos, lo que cierra los vanos, y los huecos interiores son las habitaciones.
+  - Rectángulos: la caja si el polígono la llena en un 90 %; si no, el mayor rectángulo inscrito, con aviso. Las caras enfrentadas se llevan al eje del muro para que compartan arista.
+  - Nombres (`src/cad/nombres_dxf.py`): sinónimos en español e inglés y abreviaturas; se ignoran áreas, cotas y niveles; sin coincidencia, «ambiente N».
+  - Dos grupos separados más de 2 m son dos plantas: la alta se elige por textos («PLANTA ALTA», «segundo piso») o por no tener sala ni cocina, y se alinea por la escalera. El terreno es el dibujado o la casa más 1 m.
+- Nueva operación de chat `renombrar_ambiente` («llama cocina al ambiente 1»), también en dos plantas.
+- Medido con DXF al estilo AutoCAD (mm, muros como LINE o polilíneas, bloques de puertas y camas, cotas, marco, texto de áreas): 6 de 6 habitaciones con medidas a eje correctas, bien nombradas y conectadas, en 0,1 s. Groq interpreta «llama cocina al ambiente 1», «el ambiente 2 es un baño» y «convierte el dormitorio 2 en estudio».
+- Límites: probado solo con DXF sintéticos (falta un archivo real de otro programa); muros curvos o diagonales se aproximan; vanos de más de 0,9 m (garaje, arcos abiertos) unen habitaciones; corredores de menos de 1 m se pierden; se pierde el dibujo original de muros, puertas y muebles; no admite DWG ni más de dos plantas.
+
+Verificado: 460 tests; peticiones reales con Groq en una y dos plantas (agregar, quitar, ampliar, reducir, cambiar de planta y rechazos), sin ids repetidos y con la escalera alineada. Tiempos: unos 9 s por cambio que reorganiza, 17 s al cambiar de planta.
+
+Límites:
+- Agregar un ambiente arriba cuando la planta está llena puede dejarla sobresaliendo de la baja (se avisa; ocurrió en una de dos pruebas).
+- Tras quitar un ambiente los demás crecen como máximo un 30 %.
+- La escalera no se puede mover ni redimensionar, y se dibuja sin recorrido ni hueco en la losa.
+- No se puede crear ni eliminar una planta por chat.
+
+## Exportación BIM
 - **Exportación BIM — ✅ IMPLEMENTADA (2026-11-26).** Botón «Modelo BIM (IFC)» junto a DXF y CSV; el archivo se genera solo al pulsarlo (descarga diferida de Streamlit). `src/bim/ifc.py` (`generar_ifc`, IfcOpenShell 0.9, obligatoria en `requirements.txt`) produce IFC4 en metros:
   - Proyecto → sitio → edificio → una planta por piso (cada 2,80 m).
   - IfcSpace por ambiente (nombre, área en `Qto_SpaceBaseQuantities`).
@@ -362,3 +386,28 @@ Cada ambiente tiene una recta de ancho (junto a la pared superior) y otra de lar
   Verificado: pasa `ifcopenshell.validate` (incluidas las reglas EXPRESS) en el plano fijo y en tres planos reales (uno de dos plantas), toda la geometría se procesa con `ifcopenshell.geom`, cada carpintería llena su vano y la descarga real desde la app abre como IFC4. Se exporta en menos de 1 s. Hallazgo: `unit.assign_unit` usa milímetros por defecto y las carpinterías salían a escala 1:10; ahora se fijan metros y un test lo comprueba.
 
   Límites: sin materiales ni capas de muro, cubierta, IfcStair ni límites de espacio (IfcRelSpaceBoundary); muebles como cajas; en dos plantas cada una se optimiza por separado, así que pueden no coincidir los contornos. Falta abrirlo en Revit o ArchiCAD reales.
+
+## Acciones pendientes (priorizadas) — revisión 2026-11-26
+
+### Verificación manual pendiente
+- Probar el botón de pantalla completa en un navegador real.
+- Abrir un `.ifc` en Revit, ArchiCAD o BIM Vision.
+
+### Funcionalidad
+- Guardar y retomar proyectos (hoy se pierden al cerrar la pestaña).
+- Elegir entre varias distribuciones propuestas.
+- Ventanas: garantizar ventana en dormitorios y sala, orientación (norte), altura de alféizar; no colocarlas hacia huecos interiores.
+- Retiros del terreno y ubicación de la casa en el lote.
+- Garaje con acceso desde la calle; eliminar huecos diminutos entre muros.
+- Medidas en 3D y en el IFC, o medidas libres de pared a pared.
+- Lámina en PDF con plano, cuadro de áreas, escala y rótulo.
+- BIM con materiales, cubierta y escalera como IfcStair.
+- El editor solo opera con habitaciones rectangulares.
+
+### Calidad y mantenimiento
+- Velocidad: 6–8 s por planta y unos 9 s por edición.
+- Lanzador (`iniciar.py` / `iniciar.bat`) para instalar y arrancar; pospuesto por el dueño.
+- Actualizar `actions/checkout` y `actions/setup-python` (aviso de Node 20).
+- Proxy con URL fija (named tunnel o Render); su límite de peticiones vive en memoria.
+- Re-ejecutar el benchmark con Groq (`scripts/benchmark_llm.py`).
+- Probar `ClaudeProvider` con una clave real (sin saldo de API; coste estimado de centavos) y, con ella, los *refusal fallbacks*.

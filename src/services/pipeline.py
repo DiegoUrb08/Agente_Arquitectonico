@@ -18,8 +18,14 @@ from src.geometry.opening_generator import generar_aberturas
 from src.geometry.wall_generator import generar_muros
 from src.geometry.window_generator import generar_ventanas_automaticas
 from src.models.distribucion import validar_esquema_distribucion
-from src.planning.layout_optimizer import optimizar_distribucion, optimizar_por_pisos
+from src.planning.layout_optimizer import (
+    contorno,
+    optimizar_distribucion,
+    optimizar_por_pisos,
+)
 from src.planning.reglas_acceso import evaluar_reglas, nombres_legibles, tipo_base
+from src.planning.space_graph import interpretar_relacion
+from src.utils.texto import normalizar_nombre
 
 ESPESOR_EXTERIOR_M = 0.20
 ESPESOR_INTERIOR_M = 0.15
@@ -124,6 +130,39 @@ def construir_plano(
     a partir de una distribución ya resuelta (del optimizador o editada).
     """
 
+    plano = _construir_piso(
+        distribucion, ancho, largo, ruta_dxf, progreso, amueblar
+    )
+
+    if progreso:
+        progreso("Construyendo el plano DXF...")
+
+    plano.ruta_dxf.parent.mkdir(parents=True, exist_ok=True)
+
+    generar_dxf_desde_geometrias(
+        resultado_geometrias=plano.geometrias,
+        ancho_terreno_m=ancho,
+        largo_terreno_m=largo,
+        ruta_salida=str(plano.ruta_dxf),
+        resultado_muros=plano.muros,
+        resultado_aberturas=plano.aberturas,
+        resultado_mobiliario=plano.mobiliario,
+    )
+
+    return plano
+
+
+def _construir_piso(
+    distribucion,
+    ancho,
+    largo,
+    ruta_dxf,
+    progreso: Callable[[str], None] | None = None,
+    amueblar: bool = True,
+    planta_baja: bool = True,
+) -> ResultadoPlano:
+    """Todo lo de una planta salvo escribir el DXF."""
+
     def avisar(mensaje: str):
         if progreso:
             progreso(mensaje)
@@ -153,6 +192,7 @@ def construir_plano(
         distribucion=distribucion,
         ancho_puerta_m=ANCHO_PUERTA_M,
         espesor_muro_m=ESPESOR_INTERIOR_M,
+        puerta_exterior=planta_baja,
         espesor_exterior_m=ESPESOR_EXTERIOR_M,
     )
 
@@ -175,20 +215,6 @@ def construir_plano(
         avisar("Colocando el mobiliario...")
         mobiliario = amueblar_automaticamente(geometrias, puertas)
 
-    avisar("Construyendo el plano DXF...")
-    ruta = Path(ruta_dxf)
-    ruta.parent.mkdir(parents=True, exist_ok=True)
-
-    generar_dxf_desde_geometrias(
-        resultado_geometrias=geometrias,
-        ancho_terreno_m=ancho,
-        largo_terreno_m=largo,
-        ruta_salida=str(ruta),
-        resultado_muros=muros,
-        resultado_aberturas=aberturas,
-        resultado_mobiliario=mobiliario,
-    )
-
     return ResultadoPlano(
         distribucion=distribucion,
         validacion=validacion,
@@ -196,10 +222,12 @@ def construir_plano(
         muros=muros,
         puertas=puertas,
         aberturas=aberturas,
-        ruta_dxf=ruta,
+        ruta_dxf=Path(ruta_dxf),
         mobiliario=mobiliario,
         ventanas=ventanas,
-        avisos=_avisos(distribucion, puertas, validacion, ventanas),
+        avisos=_avisos(
+            distribucion, puertas, validacion, ventanas, planta_baja
+        ),
     )
 
 
@@ -212,129 +240,160 @@ def generar_plano_multipisos(
     amueblar: bool = True,
 ) -> ResultadoPlanoMultipisos:
     """
-    Optimiza cada piso por separado y genera un único DXF con los pisos
-    apilados verticalmente.
+    Optimiza las plantas (escalera alineada y contorno parecido) y genera un
+    único DXF con ellas apiladas verticalmente.
     """
 
-    def avisar(mensaje: str):
-        if progreso:
-            progreso(mensaje)
-
     distribuciones = optimizar_por_pisos(requerimientos)
-    pisos_resultados = []
-    pisos_datos_dxf = []
+    resultado = construir_multipisos(
+        distribuciones, ancho, largo, ruta_dxf, progreso, amueblar
+    )
+
+    for plano in resultado.pisos:
+        plano.notas = _notas(requerimientos, plano.distribucion)
+
+    resultado.pisos[0].avisos += _relaciones_entre_plantas(
+        requerimientos, distribuciones
+    )
+
+    return resultado
+
+
+def construir_multipisos(
+    distribuciones,
+    ancho,
+    largo,
+    ruta_dxf,
+    progreso: Callable[[str], None] | None = None,
+    amueblar: bool = True,
+) -> ResultadoPlanoMultipisos:
+    """Planos y DXF conjunto a partir de distribuciones ya resueltas."""
+
+    pisos = []
 
     for i, distribucion in enumerate(distribuciones):
-        avisar(f"Construyendo piso {i + 1} de {len(distribuciones)}...")
+        if progreso:
+            progreso(f"Construyendo piso {i + 1} de {len(distribuciones)}...")
 
-        validar_esquema_distribucion(distribucion)
-        validacion = validar_distribucion(distribucion)
-        geometrias = generar_geometrias(distribucion, ancho, largo)
-
-        if not geometrias["valido"]:
-            raise ValueError(
-                f"Piso {i + 1}: geometría inválida: " + "; ".join(geometrias["errores"])
+        plano = _construir_piso(
+            distribucion, ancho, largo, ruta_dxf,
+            amueblar=amueblar, planta_baja=i == 0,
+        )
+        if i > 0:
+            plano.avisos += _avisos_de_planta_alta(
+                distribuciones[0], distribucion
             )
+        pisos.append(plano)
 
-        muros = generar_muros(
-            ambientes_geometricos=geometrias["ambientes"],
-            espesor_exterior_m=ESPESOR_EXTERIOR_M,
-            espesor_interior_m=ESPESOR_INTERIOR_M,
-        )
+    if progreso:
+        progreso("Construyendo el plano DXF multipiso...")
 
-        puertas = generar_puertas_automaticas(
-            distribucion=distribucion,
-            ancho_puerta_m=ANCHO_PUERTA_M,
-            espesor_muro_m=ESPESOR_INTERIOR_M,
-            puerta_exterior=i == 0,
-            espesor_exterior_m=ESPESOR_EXTERIOR_M,
-        )
-
-        ventanas = generar_ventanas_automaticas(
-            geometrias,
-            espesor_muro_m=ESPESOR_EXTERIOR_M,
-            puertas=puertas,
-        )
-
-        aberturas = generar_aberturas(
-            resultado_muros=muros,
-            aberturas=puertas["puertas"] + ventanas["ventanas"],
-        )
-
-        mobiliario = None
-        if amueblar:
-            mobiliario = amueblar_automaticamente(geometrias, puertas)
-
-        pisos_resultados.append(ResultadoPlano(
-            distribucion=distribucion,
-            validacion=validacion,
-            geometrias=geometrias,
-            muros=muros,
-            puertas=puertas,
-            aberturas=aberturas,
-            ruta_dxf=Path(ruta_dxf),
-            mobiliario=mobiliario,
-            ventanas=ventanas,
-            avisos=_avisos(
-                distribucion, puertas, validacion, ventanas, planta_baja=i == 0
-            ),
-            notas=_notas(requerimientos, distribucion),
-        ))
-
-        pisos_datos_dxf.append({
-            "geometrias": geometrias,
-            "resultado_muros": muros,
-            "resultado_aberturas": aberturas,
-            "resultado_mobiliario": mobiliario,
-        })
-
-    avisar("Construyendo el plano DXF multipiso...")
     ruta = Path(ruta_dxf)
     ruta.parent.mkdir(parents=True, exist_ok=True)
 
     generar_dxf_multipisos(
-        pisos=pisos_datos_dxf,
+        pisos=[
+            {
+                "geometrias": p.geometrias,
+                "resultado_muros": p.muros,
+                "resultado_aberturas": p.aberturas,
+                "resultado_mobiliario": p.mobiliario,
+            }
+            for p in pisos
+        ],
         ancho_terreno_m=ancho,
         largo_terreno_m=largo,
         ruta_salida=str(ruta),
     )
 
-    for plano in pisos_resultados:
-        plano.ruta_dxf = ruta
-
     return ResultadoPlanoMultipisos(
-        pisos=pisos_resultados,
-        ruta_dxf=ruta,
-        numero_pisos=len(distribuciones),
+        pisos=pisos, ruta_dxf=ruta, numero_pisos=len(pisos),
     )
+
+
+def _avisos_de_planta_alta(baja, alta) -> list[str]:
+    """La escalera debe coincidir y la planta alta no debe sobresalir."""
+    avisos = []
+
+    def escalera(distribucion):
+        return next(
+            (
+                tuple(round(a[k], 2) for k in ("x", "y", "ancho", "largo"))
+                for a in distribucion if tipo_base(a["id"]) == "escalera"
+            ),
+            None,
+        )
+
+    if escalera(baja) != escalera(alta):
+        avisos.append("La escalera no coincide con la de la planta baja.")
+
+    bx0, by0, bx1, by1 = contorno(baja)
+    ax0, ay0, ax1, ay1 = contorno(alta)
+    saliente = max(bx0 - ax0, by0 - ay0, ax1 - bx1, ay1 - by1)
+
+    if saliente > 0.05:
+        avisos.append(
+            f"La planta alta sobresale {saliente:.1f} m de la planta baja."
+        )
+
+    return avisos
+
+
+def _relaciones_entre_plantas(requerimientos, distribuciones) -> list[str]:
+    """Relaciones pedidas entre ambientes que quedaron en plantas distintas."""
+    if len(distribuciones) < 2:
+        return []
+
+    en_planta = [
+        {normalizar_nombre(a["nombre"]) for a in d} for d in distribuciones
+    ]
+    avisos = []
+
+    for relacion in requerimientos.relaciones_adyacencia:
+        a, b, _ = interpretar_relacion(relacion)
+        if not any({a, b} <= nombres for nombres in en_planta):
+            avisos.append(
+                f"No se puede juntar {a} con {b}: quedan en plantas distintas."
+            )
+
+    return list(dict.fromkeys(avisos))
 
 
 def abrir_plano(
     ruta_entrada,
     ruta_salida,
     progreso: Callable[[str], None] | None = None,
-) -> ResultadoPlano:
+) -> ResultadoPlano | ResultadoPlanoMultipisos:
     """
-    Carga un DXF generado por este proyecto y reconstruye su plano completo
-    (muros, puertas, ventanas, mobiliario) sin modificar la distribución.
+    Carga un DXF generado por este proyecto (una o dos plantas) y reconstruye
+    su plano completo (muros, puertas, ventanas, mobiliario) sin modificar la
+    distribución.
     """
 
-    from src.cad.dxf_editor import (
-        cargar_y_editar,
-        distribucion_desde_ambientes,
-    )
+    from src.cad.dxf_editor import leer_plantas, tiene_metadatos
+    from src.cad.importador_dxf import importar_documento, leer_dxf
 
-    _, ambientes, terreno, _ = cargar_y_editar(ruta_entrada, None)
+    documento = leer_dxf(ruta_entrada)
 
-    xmin, ymin, xmax, ymax = terreno.bounds
+    if tiene_metadatos(documento):
+        distribuciones, ancho, largo = leer_plantas(ruta_entrada)
+        notas = []
+    else:
+        # Dibujado con otro programa: se deducen las habitaciones.
+        distribuciones, ancho, largo, notas = importar_documento(documento)
 
-    return construir_plano(
-        distribucion_desde_ambientes(ambientes),
-        round(xmax - xmin, 3),
-        round(ymax - ymin, 3),
-        ruta_salida,
-        progreso,
-    )
+    if len(distribuciones) > 1:
+        plano = construir_multipisos(
+            distribuciones, ancho, largo, ruta_salida, progreso
+        )
+        plano.pisos[0].notas = notas
+    else:
+        plano = construir_plano(
+            distribuciones[0], ancho, largo, ruta_salida, progreso
+        )
+        plano.notas = notas
+
+    return plano
 
 
 def editar_plano(

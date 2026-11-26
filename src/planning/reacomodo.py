@@ -11,13 +11,21 @@ import math
 from ortools.sat.python import cp_model
 
 from src.planning import layout_optimizer as optimizador
-from src.planning.reglas_acceso import asignar_en_suite, elegir_entrada
+from src.models.requirements import Ambiente, RequerimientosArquitectonicos
+from src.planning.reglas_acceso import (
+    asignar_en_suite,
+    completar_programa,
+    elegir_entrada,
+    tipo_base,
+)
 from src.planning.restricciones import agregar_separacion
 
 # Cuánto puede variar la superficie de los ambientes que no se piden cambiar,
 # y cuánto puede diferir la del ambiente ampliado respecto a lo pedido.
 HOLGURA_VECINOS = 0.15
 HOLGURA_PEDIDA = 0.03
+# Al agregar o quitar un ambiente los demás tienen que ceder o crecer más.
+HOLGURA_AL_CAMBIAR_PROGRAMA = 0.3
 
 TIEMPO_REACOMODO_SEGUNDOS = 8
 
@@ -53,14 +61,14 @@ _FIN = {"x": "fin_x", "y": "fin_y"}
 _LADO = {"x": "ancho", "y": "largo"}
 
 
-def _nodos(distribucion, holguras=None, objetivos=None):
+def _nodos(distribucion, holguras=None, objetivos=None, holgura_base=HOLGURA_VECINOS):
     nodos = []
     for ambiente in distribucion:
         identificador = ambiente["id"]
         objetivo = (objetivos or {}).get(
             identificador, ambiente["ancho"] * ambiente["largo"]
         )
-        holgura = (holguras or {}).get(identificador, HOLGURA_VECINOS)
+        holgura = (holguras or {}).get(identificador, holgura_base)
         nodos.append({
             "id": identificador,
             "nombre": ambiente["nombre"],
@@ -74,6 +82,7 @@ def _nodos(distribucion, holguras=None, objetivos=None):
 def _resolver(
     distribucion, nodos, ancho_dm, largo_dm, con_reglas, preferencias,
     peso_area, factores=None, pedido=None, pares_pedidos=(),
+    fijos=frozenset(), limites=None, planta_baja=True, cubrir=None,
 ):
     """
     `pedido(modelo, variables, adyacencias)` impone el cambio solicitado y
@@ -87,15 +96,50 @@ def _resolver(
     )
     modelo.AddNoOverlap2D(intervalos_x, intervalos_y)
 
+    # Ambientes que no se pueden tocar (la escalera de una casa de dos pisos).
+    for ambiente in distribucion:
+        if ambiente["id"] in fijos:
+            for clave in ("x", "y", "ancho", "largo"):
+                modelo.Add(
+                    variables[ambiente["id"]][clave] == round(ambiente[clave] * 10)
+                )
+
+    if limites:
+        x0, y0, x1, y1 = (round(v * 10) for v in limites)
+        for datos in variables.values():
+            modelo.Add(datos["x"] >= x0)
+            modelo.Add(datos["y"] >= y0)
+            modelo.Add(datos["fin_x"] <= x1)
+            modelo.Add(datos["fin_y"] <= y1)
+
     adyacencias = optimizador._Adyacencias(modelo, variables, ancho_dm, largo_dm)
 
+    if cubrir:
+        # La planta de abajo sigue llegando hasta donde está la de arriba.
+        x0, y0, x1, y1 = (round(v * 10) for v in cubrir)
+        for clave, valor, hacia_abajo in (
+            ("x", x0, True), ("y", y0, True),
+            ("fin_x", x1, False), ("fin_y", y1, False),
+        ):
+            llegan = []
+            for identificador, datos in variables.items():
+                llega = modelo.NewBoolVar(f"cubre_{clave}_{identificador}")
+                condicion = (
+                    datos[clave] <= valor if hacia_abajo
+                    else datos[clave] >= valor
+                )
+                modelo.Add(condicion).OnlyEnforceIf(llega)
+                llegan.append(llega)
+            modelo.AddBoolOr(llegan)
+
     if con_reglas:
-        entrada = elegir_entrada(ids)
+        entrada = elegir_entrada(ids, planta_baja)
         optimizador._reglas_de_acceso(
             modelo, ids, adyacencias, entrada,
             asignar_en_suite(ids) if preferencias else {},
         )
-        optimizador._entrada_al_frente(modelo, ids, variables, entrada)
+        if planta_baja:
+            optimizador._entrada_al_frente(modelo, ids, variables, entrada)
         optimizador._separar_banos(
             modelo, ids, variables, [{"pares": list(pares_pedidos)}]
         )
@@ -164,10 +208,20 @@ def _por_niveles(distribucion, nodos, ancho_terreno_m, largo_terreno_m, **opcion
     if minima_m2 * 100 > ancho_dm * largo_dm:
         return None
 
-    for con_reglas, preferencias in NIVELES:
+    contornos = {
+        clave: opciones.pop(clave, None) for clave in ("limites", "cubrir")
+    }
+    # Primero respetando el contorno de la otra planta; si no cabe, sin él.
+    intentos = (
+        [(n, contornos) for n in NIVELES[:2]]
+        if any(contornos.values()) else []
+    )
+    intentos += [(n, {}) for n in NIVELES]
+
+    for (con_reglas, preferencias), contorno in intentos:
         resultado = _resolver(
             distribucion, nodos, ancho_dm, largo_dm, con_reglas, preferencias,
-            **opciones,
+            **contorno, **opciones,
         )
         if resultado is not None:
             return resultado
@@ -181,8 +235,13 @@ def reacomodar_para_area(
     area_m2: float,
     ancho_terreno_m: float,
     largo_terreno_m: float,
+    **planta,
 ) -> list[dict] | None:
-    """Nueva distribución en la que `identificador` mide `area_m2`, o None."""
+    """
+    Nueva distribución en la que `identificador` mide `area_m2`, o None.
+
+    `planta` admite `fijos`, `limites` y `planta_baja`.
+    """
     nodos = _nodos(
         distribucion,
         holguras={identificador: HOLGURA_PEDIDA},
@@ -190,7 +249,7 @@ def reacomodar_para_area(
     )
     return _por_niveles(
         distribucion, nodos, ancho_terreno_m, largo_terreno_m,
-        peso_area={identificador: PESO_AREA_PEDIDA},
+        peso_area={identificador: PESO_AREA_PEDIDA}, **planta,
     )
 
 
@@ -230,6 +289,7 @@ def reubicar_ambiente(
     relacion: str,
     ancho_terreno_m: float,
     largo_terreno_m: float,
+    **planta,
 ) -> list[dict] | None:
     """
     Nueva distribución en la que `identificador` cumple `relacion` respecto a
@@ -305,4 +365,112 @@ def reubicar_ambiente(
         pares_pedidos=[
             (identificador, ref) for ref in referencias if relacion != "lejos_de"
         ],
+        **planta,
+    )
+
+
+def _pasillo_necesario(distribucion, identificador) -> dict | None:
+    """El pasillo que pide el nuevo programa y todavía no existe, o None."""
+    # Sin dormitorios, la sala basta para repartir.
+    if not any(tipo_base(a["id"]) == "dormitorio" for a in distribucion):
+        return None
+    requerimientos = RequerimientosArquitectonicos(ambientes=[
+        Ambiente(nombre=a["nombre"], area_objetivo_m2=a["ancho"] * a["largo"])
+        for a in distribucion
+    ])
+    completo = completar_programa(requerimientos)
+    if completo is requerimientos:
+        return None
+    area = completo.ambientes[-1].area_objetivo_m2
+    lado = math.sqrt(area / 3)
+    return {"id": identificador, "nombre": "pasillo", "x": 0.0, "y": 0.0,
+            "ancho": round(max(lado, 1.2), 1), "largo": round(area / max(lado, 1.2), 1)}
+
+
+def agregar_a_planta(
+    distribucion: list[dict],
+    nuevo: dict,
+    ancho_terreno_m: float,
+    largo_terreno_m: float,
+    referencias: list[str] = (),
+    relacion: str = "junto_a",
+    id_pasillo: str = "pasillo_1",
+    **planta,
+) -> list[dict] | None:
+    """
+    Distribución con el ambiente `nuevo` ({id, nombre, area_m2}), junto a
+    alguna de las `referencias` si se indican, o None si no cabe. Añade un
+    pasillo si el nuevo programa lo necesita.
+    """
+    lado = round(math.sqrt(nuevo["area_m2"]), 1)
+    punto = distribucion[0] if distribucion else {"x": 0.0, "y": 0.0}
+    incorporados = [{
+        "id": nuevo["id"], "nombre": nuevo["nombre"],
+        "x": punto["x"], "y": punto["y"], "ancho": lado,
+        "largo": round(nuevo["area_m2"] / lado, 1),
+    }]
+    pasillo = _pasillo_necesario(distribucion + incorporados, id_pasillo)
+    if pasillo:
+        incorporados.append(pasillo)
+
+    completa = distribucion + incorporados
+    nodos = _nodos(
+        completa,
+        holguras={nuevo["id"]: HOLGURA_PEDIDA * 3},
+        objetivos={nuevo["id"]: nuevo["area_m2"]},
+        holgura_base=HOLGURA_AL_CAMBIAR_PROGRAMA,
+    )
+
+    pedido = None
+    if referencias:
+        def pedido(modelo, variables, adyacencias):
+            if relacion in DIRECCIONES:
+                pegado, solape, antes = DIRECCIONES[relacion]
+                opciones = []
+                for ref in referencias:
+                    a, b = variables[nuevo["id"]], variables[ref]
+                    primero, segundo = (a, b) if antes else (b, a)
+                    opcion = modelo.NewBoolVar(f"nuevo_{ref}")
+                    for condicion in (
+                        primero[_FIN[pegado]] == segundo[pegado],
+                        a[solape] + CONTACTO_DM <= b[_FIN[solape]],
+                        b[solape] + CONTACTO_DM <= a[_FIN[solape]],
+                    ):
+                        modelo.Add(condicion).OnlyEnforceIf(opcion)
+                    opciones.append(opcion)
+                modelo.AddBoolOr(opciones)
+            else:
+                modelo.AddBoolOr([
+                    adyacencias.par(nuevo["id"], ref, CONTACTO_DM)
+                    for ref in referencias
+                ])
+            return 0
+
+    # Lo recién llegado no tiene posición previa que conservar.
+    return _por_niveles(
+        completa, nodos, ancho_terreno_m, largo_terreno_m,
+        peso_area={nuevo["id"]: PESO_AREA_PEDIDA},
+        factores={a["id"]: 0 for a in incorporados},
+        pedido=pedido,
+        pares_pedidos=[(nuevo["id"], ref) for ref in referencias],
+        **planta,
+    )
+
+
+def quitar_de_planta(
+    distribucion: list[dict],
+    identificador: str,
+    ancho_terreno_m: float,
+    largo_terreno_m: float,
+    **planta,
+) -> list[dict] | None:
+    """Distribución sin ese ambiente; los demás ocupan su sitio, o None."""
+    resto = [a for a in distribucion if a["id"] != identificador]
+    # Un pasillo que se queda sin dormitorios ni baños no sirve de nada.
+    if not any(tipo_base(a["id"]) in ("dormitorio", "bano") for a in resto):
+        resto = [a for a in resto if tipo_base(a["id"]) != "pasillo"]
+
+    return _por_niveles(
+        resto, _nodos(resto, holgura_base=HOLGURA_AL_CAMBIAR_PROGRAMA),
+        ancho_terreno_m, largo_terreno_m, peso_area={}, **planta,
     )

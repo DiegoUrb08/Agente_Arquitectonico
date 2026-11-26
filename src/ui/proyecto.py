@@ -1,10 +1,12 @@
 """Estado de un proyecto: versiones del plano y conversación (sin Streamlit)."""
 
+import re
 import tempfile
 from pathlib import Path
 
 import ezdxf
 
+from src.services.edicion_multipisos import editar_plano_multipisos
 from src.services.pipeline import (
     ResultadoPlanoMultipisos,
     abrir_plano,
@@ -24,14 +26,13 @@ RELACIONES = {
 }
 
 AYUDA = (
-    "Puedo **cambiar el área** de un ambiente (*«reduce el comedor a 8 m²»*) "
-    "o **reubicarlo** respecto a otro (*«pon la cocina al lado del "
-    "dormitorio»*)."
+    "Puedo **cambiar el área** de un ambiente (*«reduce el comedor a 8 m²»*), "
+    "**reubicarlo** (*«pon la cocina al lado del dormitorio»*), **agregar** "
+    "(*«agrega un estudio»*), **quitar** (*«quita un baño»*) o "
+    "**renombrar** ambientes (*«llama cocina al ambiente 1»*)."
 )
 
-AVISO_VARIAS_PLANTAS = (
-    "La edición por texto todavía no admite planos de varias plantas."
-)
+AYUDA_PLANTAS = " En esta casa puedes decir «arriba» o «abajo»."
 
 
 def pisos_de(resultado) -> list:
@@ -45,10 +46,6 @@ def dimensiones_terreno(piso) -> tuple[float, float]:
     return maxx - minx, maxy - miny
 
 
-def puede_editar(resultado) -> bool:
-    return not isinstance(resultado, ResultadoPlanoMultipisos)
-
-
 def _legible(identificador: str) -> str:
     return str(identificador).replace("_", " ").capitalize()
 
@@ -58,14 +55,36 @@ def resumen_modificaciones(modificaciones: list) -> list[str]:
     lineas = []
     for m in modificaciones:
         nombre = _legible(m.get("id") or m["ambiente"])
-        if "area_nueva" in m:
+        planta = f" (planta {m['planta']})" if m.get("planta") else ""
+        accion = m.get("accion")
+        if accion == "agregado":
+            lineas.append(
+                f"Agregué {nombre}, de {m['area_nueva']:.1f} m²{planta}"
+            )
+        elif accion == "quitado":
+            lineas.append(f"Quité {nombre}{planta}")
+        elif accion == "renombrado":
+            lineas.append(
+                f"{_legible(m['id_anterior'])} ahora es {nombre}{planta}"
+            )
+        elif accion == "cambiado_de_planta":
+            cambio = f" como {nombre}" if m["id"] != m["id_anterior"] else ""
+            lineas.append(
+                f"{_legible(m['id_anterior'])} pasó a la planta "
+                f"{m['planta']}{cambio}"
+            )
+        elif "area_nueva" in m:
             lineas.append(
                 f"{nombre}: {m['area_anterior']:.1f} → {m['area_nueva']:.1f} m²"
             )
         else:
             relacion = RELACIONES.get(m["relacion"], m["relacion"])
             referencia = str(m["referencia"]).replace("_", " ")
-            lineas.append(f"{nombre} movido {relacion} {referencia}")
+            lineas.append(f"{nombre} movido {relacion} {referencia}{planta}")
+        if m.get("tambien"):
+            verbo = "quité" if accion == "quitado" else "agregué"
+            extra = ", ".join(_legible(i) for i in m["tambien"])
+            lineas.append(f"También {verbo}: {extra}")
         if m.get("ajustes"):
             cedidos = ", ".join(
                 f"{_legible(a['id'])} {a['area_anterior']:.1f} → "
@@ -113,7 +132,8 @@ def _por_piso(resultado, atributo: str) -> list[str]:
 def observaciones_del_plano(resultado) -> str:
     """Texto para el chat con lo añadido y las reglas no cumplidas."""
     lineas = list(dict.fromkeys(
-        t.split(": ", 1)[-1] for t in _por_piso(resultado, "notas")
+        re.sub(r"^Planta (baja|alta \d+): ", "", t)
+        for t in _por_piso(resultado, "notas")
     ))
     lineas += [f"⚠️ {t}" for t in _por_piso(resultado, "avisos")]
     return "".join(f"\n\n{linea}" for linea in lineas)
@@ -147,7 +167,7 @@ def _version(resultado, dxf: bytes, etiqueta: str, cambiados=frozenset()) -> dic
 
 
 def _invitacion(resultado) -> str:
-    return AYUDA if puede_editar(resultado) else AVISO_VARIAS_PLANTAS
+    return AYUDA + (AYUDA_PLANTAS if len(pisos_de(resultado)) > 1 else "")
 
 
 def proyecto_inicial(requerimientos, texto: str, resultado, dxf: bytes) -> dict:
@@ -221,7 +241,12 @@ def aplicar_edicion(proyecto: dict, texto: str, solicitud) -> None:
         entrada = Path(carpeta) / "entrada.dxf"
         salida = Path(carpeta) / "salida.dxf"
         entrada.write_bytes(actual["dxf"])
-        resultado = editar_plano(str(entrada), str(salida), solicitud)
+        if isinstance(actual["resultado"], ResultadoPlanoMultipisos):
+            resultado = editar_plano_multipisos(
+                actual["resultado"], str(salida), solicitud
+            )
+        else:
+            resultado = editar_plano(str(entrada), str(salida), solicitud)
         dxf = salida.read_bytes()
 
     lineas = resumen_modificaciones(resultado["modificaciones"])

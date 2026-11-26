@@ -139,14 +139,6 @@ def test_nuevo_proyecto_vuelve_al_inicio(entorno):
     assert "proyecto" not in at.session_state
 
 
-def test_con_varias_plantas_la_conversacion_queda_desactivada(entorno):
-    entorno.setattr("src.ui.proyecto.puede_editar", lambda resultado: False)
-    at = _con_plano()
-
-    assert at.chat_input[0].disabled
-    assert "varias plantas" in at.chat_message[1].markdown[0].value
-
-
 def test_los_ejemplos_rellenan_el_cuadro_de_texto(entorno):
     from src.ui.interfaz import EJEMPLOS
 

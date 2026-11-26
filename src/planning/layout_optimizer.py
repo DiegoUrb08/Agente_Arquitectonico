@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from ortools.sat.python import cp_model
 
-from src.planning.space_graph import construir_grafo
+from src.planning.space_graph import construir_grafo, interpretar_relacion
 from src.planning.reglas_ambientes import (  # noqa: F401
     MIN_LADO_DM,
     TIEMPO_MAXIMO_SEGUNDOS,
@@ -685,7 +685,10 @@ def _extraer_resultado(solver, nodos, variables):
 # 3. OPTIMIZACIÓN DE LA DISTRIBUCIÓN
 # ============================================================
 
-def optimizar_distribucion(requerimientos, planta_baja: bool = True):
+def optimizar_distribucion(
+    requerimientos, planta_baja: bool = True, fijos=None, limites=None,
+    niveles=None,
+):
     """
     Genera una distribución espacial preliminar
     mediante programación por restricciones.
@@ -708,6 +711,10 @@ def optimizar_distribucion(requerimientos, planta_baja: bool = True):
     acceso a cada ambiente sin cruzar dormitorios ni baños, pasillo, baños
     separados, baño en suite y cocina junto al comedor. Si no caben, se van
     relajando según `NIVELES`.
+
+    `fijos` ({id: (x, y, ancho, largo)} en metros) deja esos ambientes donde
+    se indica (la escalera de la planta alta) y `limites` (x0, y0, x1, y1)
+    obliga a que todo quede dentro de ese rectángulo.
     """
 
     ancho_terreno_dm, largo_terreno_dm = _validar_terreno(requerimientos)
@@ -725,7 +732,7 @@ def optimizar_distribucion(requerimientos, planta_baja: bool = True):
     con_pasillo = completar_programa(requerimientos)
     intentados = []
 
-    for nivel in NIVELES:
+    for nivel in niveles or NIVELES:
 
         programa = con_pasillo if nivel.pasillo else requerimientos
         grafo_nivel = construir_grafo(programa)
@@ -741,7 +748,7 @@ def optimizar_distribucion(requerimientos, planta_baja: bool = True):
 
         resultado = _resolver_nivel(
             grafo_nivel, nivel, ancho_terreno_dm, largo_terreno_dm,
-            planta_baja,
+            planta_baja, fijos, limites,
         )
 
         if resultado is not None:
@@ -756,8 +763,19 @@ def optimizar_distribucion(requerimientos, planta_baja: bool = True):
     )
 
 
+def _fijar(nodos, fijos):
+    """El área de un ambiente fijado es la que tiene."""
+    for nodo in nodos:
+        if nodo["id"] in fijos:
+            _, _, ancho, largo = fijos[nodo["id"]]
+            nodo["area_minima_m2"] = nodo["area_objetivo_m2"] = round(
+                ancho * largo, 2
+            )
+
+
 def _resolver_nivel(
-    grafo, nivel, ancho_terreno_dm, largo_terreno_dm, planta_baja
+    grafo, nivel, ancho_terreno_dm, largo_terreno_dm, planta_baja,
+    fijos=None, limites=None,
 ):
     """Distribución que cumple las reglas del nivel, o None si no la halla."""
 
@@ -766,6 +784,8 @@ def _resolver_nivel(
     nodos = grafo["nodos"]
     relaciones = grafo["relaciones"]
     ids = [nodo["id"] for nodo in nodos]
+    fijos = {i: g for i, g in (fijos or {}).items() if i in ids}
+    _fijar(nodos, fijos)
 
     if sum(obtener_areas_ambiente(n)[0] for n in nodos) > area_terreno_dm2:
         return None
@@ -784,6 +804,18 @@ def _resolver_nivel(
     )
 
     modelo.AddNoOverlap2D(intervalos_x, intervalos_y)
+
+    for identificador, geometria in fijos.items():
+        for clave, valor in zip(("x", "y", "ancho", "largo"), geometria):
+            modelo.Add(variables[identificador][clave] == round(valor * 10))
+
+    if limites:
+        x0, y0, x1, y1 = (round(v * 10) for v in limites)
+        for datos in variables.values():
+            modelo.Add(datos["x"] >= x0)
+            modelo.Add(datos["y"] >= y0)
+            modelo.Add(datos["fin_x"] <= x1)
+            modelo.Add(datos["fin_y"] <= y1)
 
     # Conectividad, reglas de funcionamiento y relaciones del usuario.
     adyacencias = _Adyacencias(
@@ -840,6 +872,10 @@ def _resolver_nivel(
     huecos, bordes = _huecos(
         modelo, variables, area_total, ancho_terreno_dm, largo_terreno_dm
     )
+    if limites:
+        # Se rellena el contorno dado, no solo el propio.
+        x0, y0, x1, y1 = (round(v * 10) for v in limites)
+        huecos = (x1 - x0) * (y1 - y0) - area_total
     interiores = _ambientes_interiores(modelo, ids, variables, bordes)
 
     distancias = _distancias_relaciones(
@@ -876,44 +912,187 @@ def _resolver_nivel(
 # OPTIMIZACIÓN POR PISOS
 # ============================================================
 
+ESCALERA = "escalera_1"
+# Cuánto se pueden agrandar o reducir las áreas de una planta para que ambas
+# ocupen un contorno parecido.
+FACTOR_MAXIMO_PLANTA_BAJA = 1.5
+FACTORES_PLANTA_ALTA = (0.8, 1.35)
+
+
+def _es_de_planta_alta(nombre: str) -> bool:
+    return normalizar_nombre(nombre).startswith(
+        ("dormitorio", "bano", "closet", "pasillo")
+    )
+
+
+def repartir_en_plantas(ambientes) -> tuple[list, list]:
+    """
+    (planta baja, planta alta): lo privado arriba. Con dos o más baños arriba
+    y ninguno abajo, uno baja para que la planta social tenga el suyo.
+    """
+    baja = [a for a in ambientes if not _es_de_planta_alta(a.nombre)]
+    alta = [a for a in ambientes if _es_de_planta_alta(a.nombre)]
+
+    def es_bano(a):
+        return normalizar_nombre(a.nombre).startswith("bano")
+
+    arriba = sum(a.cantidad for a in alta if es_bano(a))
+    if baja and arriba >= 2 and not any(es_bano(a) for a in baja):
+        bano = next(a for a in alta if es_bano(a))
+        posicion = alta.index(bano)
+        if bano.cantidad > 1:
+            alta[posicion] = bano.model_copy(update={"cantidad": bano.cantidad - 1})
+        else:
+            del alta[posicion]
+        baja.append(bano.model_copy(update={"cantidad": 1}))
+
+    return baja, alta
+
+
+def relaciones_de_planta(relaciones, ambientes) -> list:
+    """Las relaciones que se pueden cumplir con los ambientes de una planta."""
+    cantidades: dict[str, int] = {}
+    for a in ambientes:
+        nombre = normalizar_nombre(a.nombre)
+        cantidades[nombre] = cantidades.get(nombre, 0) + a.cantidad
+
+    validas = []
+    for relacion in relaciones:
+        a, b, modo = interpretar_relacion(relacion)
+        if a not in cantidades or b not in cantidades:
+            continue
+        if a == b and cantidades[a] < 2:
+            continue
+        if modo == "correspondiente" and cantidades[a] != cantidades[b]:
+            continue
+        validas.append(relacion)
+    return validas
+
+
+def _superficie(ambientes) -> float:
+    return sum(
+        (a.area_objetivo_m2 or a.area_minima_m2 or 8) * a.cantidad
+        for a in ambientes
+    )
+
+
+def _escalar(requerimientos, factor: float):
+    """Mismo programa con las áreas objetivo multiplicadas por `factor`."""
+    ambientes = []
+    for a in requerimientos.ambientes:
+        if a.area_objetivo_m2:
+            objetivo = a.area_objetivo_m2 * factor
+            a = a.model_copy(update={"area_objetivo_m2": round(
+                max(objetivo, a.area_minima_m2 or 0), 2
+            )})
+        ambientes.append(a)
+    return requerimientos.model_copy(update={"ambientes": ambientes})
+
+
+def contorno(distribucion) -> tuple[float, float, float, float]:
+    return (
+        min(a["x"] for a in distribucion),
+        min(a["y"] for a in distribucion),
+        max(a["x"] + a["ancho"] for a in distribucion),
+        max(a["y"] + a["largo"] for a in distribucion),
+    )
+
+
+def _renumerar(alta: list, baja: list) -> list:
+    """Ids únicos en toda la casa (la escalera es la misma en ambas)."""
+    usados: dict[str, int] = {}
+    for a in baja:
+        base, numero = a["id"].rsplit("_", 1)
+        usados[base] = max(usados.get(base, 0), int(numero))
+
+    renumerados = []
+    for a in alta:
+        base, numero = a["id"].rsplit("_", 1)
+        if a["id"] != ESCALERA:
+            a = {**a, "id": f"{base}_{int(numero) + usados.get(base, 0)}"}
+        renumerados.append(a)
+    return renumerados
+
+
+def _planta_alta(requerimientos, baja: list) -> list:
+    """
+    Resuelve la planta alta con la escalera donde está abajo y, si cabe, sin
+    salirse del contorno de la planta baja.
+    """
+    escalera = next(a for a in baja if a["id"] == ESCALERA)
+    fijos = {ESCALERA: tuple(escalera[k] for k in ("x", "y", "ancho", "largo"))}
+    limites = contorno(baja)
+
+    huella = (limites[2] - limites[0]) * (limites[3] - limites[1])
+    programa = completar_programa(requerimientos)
+    resto = [a for a in programa.ambientes if a.nombre != "escalera"]
+    disponible = huella - escalera["ancho"] * escalera["largo"]
+    minimo, maximo = FACTORES_PLANTA_ALTA
+    factor = min(maximo, max(minimo, disponible / _superficie(resto)))
+
+    intentos = (
+        # Dentro del contorno sin relajar casi reglas; luego se puede salir.
+        (_escalar(programa, factor), fijos, limites, NIVELES[:2]),
+        (requerimientos, fijos, None, None),
+        (requerimientos, None, None, None),
+    )
+    for i, (req, fijo, limite, niveles) in enumerate(intentos):
+        try:
+            return optimizar_distribucion(
+                req, planta_baja=False, fijos=fijo, limites=limite,
+                niveles=niveles,
+            )
+        except ValueError:
+            if i == len(intentos) - 1:
+                raise
+
+
 def optimizar_por_pisos(requerimientos) -> list[list[dict]]:
     """
-    Para viviendas de más de un piso: divide los ambientes en planta baja
-    (social + servicio) y planta(s) alta(s) (privados), añade una escalera
-    a cada piso y los optimiza de forma independiente.
+    Para viviendas de más de un piso: planta baja (social y servicio) y
+    planta alta (privados), unidas por una escalera en la misma posición y
+    con un contorno parecido.
 
     Retorna una lista de distribuciones, una por piso.
     Si los ambientes privados quedan vacíos, cae en distribución de un piso.
     """
     from src.models.requirements import Ambiente
 
-    n_pisos = max(2, requerimientos.numero_pisos or 2)
+    # Comprueba nombres y relaciones sobre el programa completo.
+    construir_grafo(requerimientos)
 
-    baja: list = []
-    alta: list = []
-
-    for amb in requerimientos.ambientes:
-        nombre_norm = normalizar_nombre(amb.nombre)
-        es_alto = any(
-            nombre_norm.startswith(t) for t in ("dormitorio", "bano", "closet", "pasillo")
-        )
-        if es_alto:
-            alta.append(amb)
-        else:
-            baja.append(amb)
+    baja, alta = repartir_en_plantas(requerimientos.ambientes)
 
     # Si no hay ambientes privados, optimizar como un solo piso.
     if not alta:
         return [optimizar_distribucion(requerimientos)]
 
-    distribuciones = []
-    for indice, piso_ambs in enumerate([baja, alta]):
-        piso_ambs = list(piso_ambs) + [Ambiente(nombre="escalera", cantidad=1)]
-        sub_req = requerimientos.model_copy(
-            update={"ambientes": piso_ambs, "numero_pisos": 1}
-        )
-        distribuciones.append(
-            optimizar_distribucion(sub_req, planta_baja=indice == 0)
-        )
+    def programa(ambientes):
+        ambientes = [*ambientes, Ambiente(nombre="escalera", cantidad=1)]
+        return requerimientos.model_copy(update={
+            "ambientes": ambientes,
+            "numero_pisos": 1,
+            "area_total_vivienda_m2": None,
+            "relaciones_adyacencia": relaciones_de_planta(
+                requerimientos.relaciones_adyacencia, ambientes
+            ),
+        })
 
-    return distribuciones
+    req_baja, req_alta = programa(baja), programa(alta)
+
+    # Si arriba hace falta bastante más sitio, la planta baja se agranda.
+    necesaria = _superficie(completar_programa(req_alta).ambientes)
+    factor = min(
+        FACTOR_MAXIMO_PLANTA_BAJA,
+        necesaria / _superficie(req_baja.ambientes),
+    )
+    try:
+        distribucion_baja = optimizar_distribucion(
+            _escalar(req_baja, max(1.0, factor))
+        )
+    except ValueError:
+        distribucion_baja = optimizar_distribucion(req_baja)
+
+    distribucion_alta = _planta_alta(req_alta, distribucion_baja)
+
+    return [distribucion_baja, _renumerar(distribucion_alta, distribucion_baja)]

@@ -69,7 +69,10 @@ def _limites(resultado) -> tuple[float, float, float, float]:
 
 
 def etiquetas_ambientes(distribucion: list) -> dict:
-    """Id -> texto visible; numera solo los tipos que se repiten."""
+    """
+    Id -> texto visible; numera los tipos que se repiten y los que no son el
+    primero (en dos plantas, "Baño 2" puede ser el único de la suya).
+    """
     repetidos: dict[str, int] = {}
     for a in distribucion:
         repetidos[a["nombre"]] = repetidos.get(a["nombre"], 0) + 1
@@ -77,8 +80,8 @@ def etiquetas_ambientes(distribucion: list) -> dict:
     etiquetas = {}
     for a in distribucion:
         base = a["nombre"].capitalize()
-        if repetidos[a["nombre"]] > 1:
-            numero = str(a["id"]).rsplit("_", 1)[-1]
+        numero = str(a["id"]).rsplit("_", 1)[-1]
+        if repetidos[a["nombre"]] > 1 or (numero.isdigit() and numero != "1"):
             base = f"{base} {numero}"
         etiquetas[a["id"]] = base
     return etiquetas
