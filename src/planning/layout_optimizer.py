@@ -1033,6 +1033,16 @@ def repartir_en_plantas(ambientes) -> tuple[list, list]:
             del alta[posicion]
         baja.append(bano.model_copy(update={"cantidad": 1}))
 
+    # La terraza sube como balcón/azotea, pero solo si ya hay privados arriba
+    # (si no, una planta alta de solo terraza no tendría sentido).
+    if alta:
+        def es_terraza(a):
+            return normalizar_nombre(a.nombre).startswith("terraza")
+
+        for terraza in [a for a in baja if es_terraza(a)]:
+            baja.remove(terraza)
+            alta.append(terraza)
+
     return baja, alta
 
 

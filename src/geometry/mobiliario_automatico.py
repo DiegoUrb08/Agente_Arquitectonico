@@ -42,7 +42,8 @@ PLANTILLAS = {
     "estudio": [{"tipo": "escritorio"}],
     "oficina": [{"tipo": "escritorio"}],
     "lavanderia": [{"tipo": "lavadora"}, {"tipo": "secadora"}],
-    "terraza": [{"tipo": "mesa_comedor", "centrado": True}],
+    # La terraza es exterior: en 3D lleva macetas y pérgola, no muebles de interior.
+    "terraza": [],
     "closet": [{"tipo": "armario"}],
 }
 

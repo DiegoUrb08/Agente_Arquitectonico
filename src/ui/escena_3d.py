@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 
 from shapely.geometry import Point
+from shapely.ops import unary_union
 
 from src.geometry.opening_generator import construir_abertura
 from src.ui import detalle_3d
@@ -29,6 +30,15 @@ GROSOR_PISO = 0.04
 GROSOR_HOJA = 0.04
 GROSOR_VIDRIO = 0.02
 TINTE_PISO = 0.55  # cuánto se aclara el color del ambiente para el piso
+
+# Casa completa (varios pisos apilados).
+GROSOR_LOSA = 0.20
+ALTURA_ENTREPISO = ALTURA_MURO + GROSOR_LOSA  # cuánto sube cada planta
+ALTO_PARAPETO_AZOTEA = 1.0
+ESPESOR_PARAPETO = 0.12
+
+# Terraza: muro bajo a la cadera en vez de muro completo.
+ALTURA_PARAPETO_TERRAZA = 0.95
 
 PLANTILLA = Path(__file__).with_name("visor_3d.html")
 
@@ -398,11 +408,196 @@ def piezas_de_mueble(mueble, ambientes) -> list:
 
 
 # ------------------------------------------------------------
+# Terrazas
+# ------------------------------------------------------------
+
+def _es_terraza(ambiente) -> bool:
+    return tipo_base(ambiente["id"]) == "terraza"
+
+
+def _muros_de_planta(piso, ambientes) -> list:
+    """Prismas de muro; los que rodean una terraza quedan a la cadera."""
+    poligonos = _poligonos((piso.aberturas or {}).get("muros_con_aberturas"))
+    if not poligonos:
+        return []
+    muros = unary_union(poligonos)
+
+    terrazas = [a["poligono"] for a in ambientes if _es_terraza(a)]
+    if not terrazas:
+        return [
+            {"anillos": _anillos(p), "h0": 0.0, "h1": ALTURA_MURO, "material": "muro"}
+            for p in _poligonos(muros)
+        ]
+
+    # Franja de muro que pertenece a cada terraza (su contorno más el espesor).
+    anillo_terrazas = unary_union([t.buffer(0.26) for t in terrazas]).intersection(muros)
+    altos = muros.difference(anillo_terrazas)
+    parapetos = muros.intersection(anillo_terrazas)
+
+    prismas = [
+        {"anillos": _anillos(p), "h0": 0.0, "h1": ALTURA_MURO, "material": "muro"}
+        for p in _poligonos(altos)
+    ]
+    prismas += [
+        {"anillos": _anillos(p), "h0": 0.0, "h1": ALTURA_PARAPETO_TERRAZA,
+         "material": "parapeto"}
+        for p in _poligonos(parapetos)
+    ]
+    return prismas
+
+
+def piezas_de_terraza(ambiente) -> list:
+    """Macetas en las esquinas y una pérgola de madera sobre la terraza."""
+    poligono = ambiente["poligono"]
+    x0, y0, x1, y1 = poligono.bounds
+    piezas = []
+
+    # Macetas en las esquinas libres.
+    for cx, cy in detalle_3d._esquinas(poligono, 0.45):
+        for maceta in detalle_3d._planta(cx, cy):
+            if poligono.buffer(1e-6).covers(
+                Point((maceta["x0"] + maceta["x1"]) / 2,
+                      (maceta["y0"] + maceta["y1"]) / 2)
+            ):
+                piezas.append(maceta)
+
+    # Pérgola: vigas paralelas al lado más largo, más dos maestras en el borde.
+    alto, canto = ALTURA_MURO, 0.12
+    largo_en_x = (x1 - x0) >= (y1 - y0)
+    if largo_en_x:
+        viga = 0.08
+        y = y0 + 0.2
+        while y <= y1 - 0.2:
+            piezas.append(_caja(x0 + 0.1, y, x1 - 0.1, y + viga, alto, alto + canto,
+                                "pergola"))
+            y += 0.45
+        for borde in (x0 + 0.1, x1 - 0.1 - 0.1):
+            piezas.append(_caja(borde, y0 + 0.1, borde + 0.1, y1 - 0.1,
+                                alto + canto, alto + 2 * canto, "pergola"))
+    else:
+        viga = 0.08
+        x = x0 + 0.2
+        while x <= x1 - 0.2:
+            piezas.append(_caja(x, y0 + 0.1, x + viga, y1 - 0.1, alto, alto + canto,
+                                "pergola"))
+            x += 0.45
+        for borde in (y0 + 0.1, y1 - 0.1 - 0.1):
+            piezas.append(_caja(x0 + 0.1, borde, x1 - 0.1, borde + 0.1,
+                                alto + canto, alto + 2 * canto, "pergola"))
+    return piezas
+
+
+# ------------------------------------------------------------
+# Escaleras
+# ------------------------------------------------------------
+
+HUELLA_PELDANO = 0.28  # fondo de cada escalón
+PASO_ESCALERA = 0.90   # ancho libre del tramo
+
+
+def piezas_de_escalera(ambiente, sube=ALTURA_ENTREPISO) -> list:
+    """Peldaños 3D que suben `sube` m dentro del polígono de la escalera.
+
+    Tramo recto a lo largo del lado más largo; si no caben los peldaños, en L
+    con un descanso. Si el ambiente es casi cuadrado, escalera de caracol.
+    """
+    x0, y0, x1, y1 = ambiente["poligono"].bounds
+    ancho, largo = x1 - x0, y1 - y0
+    casi_cuadrado = abs(ancho - largo) < 0.15 * max(ancho, largo)
+
+    if casi_cuadrado and min(ancho, largo) >= 1.8:
+        return _escalera_caracol(x0, y0, x1, y1, sube)
+    return _escalera_recta(x0, y0, x1, y1, sube)
+
+
+def _escalera_recta(x0, y0, x1, y1, sube) -> list:
+    ancho, largo = x1 - x0, y1 - y0
+    # El tramo corre a lo largo del lado mayor.
+    horizontal = ancho >= largo
+    recorrido = (ancho if horizontal else largo) - 0.1
+    n = max(3, int(sube / 0.18))  # contrahuella objetivo ~0.18 m
+    contrahuella = sube / n
+    paso = min(PASO_ESCALERA, (largo if horizontal else ancho) - 0.1)
+
+    if n * HUELLA_PELDANO <= recorrido:
+        tramos = [(n, 0)]  # un solo tramo recto
+    else:
+        # En L: mitad de peldaños por tramo, con un descanso en la esquina.
+        mitad = n // 2
+        tramos = [(mitad, 0), (n - mitad, 1)]
+
+    piezas = []
+    altura = 0.0
+    bx, by = x0 + 0.05, y0 + 0.05
+    for cantidad, giro in tramos:
+        for i in range(cantidad):
+            altura += contrahuella
+            if (giro == 0) == horizontal:
+                px = bx + i * HUELLA_PELDANO
+                piezas.append(_caja(px, by, px + HUELLA_PELDANO, by + paso,
+                                    0, altura, "madera"))
+            else:
+                py = by + i * HUELLA_PELDANO
+                piezas.append(_caja(bx, py, bx + paso, py + HUELLA_PELDANO,
+                                    0, altura, "madera"))
+        # Punto de partida del siguiente tramo (descanso en la esquina).
+        if horizontal:
+            bx = x0 + 0.05 + (cantidad - 1) * HUELLA_PELDANO
+            by = by + paso
+        else:
+            by = y0 + 0.05 + (cantidad - 1) * HUELLA_PELDANO
+            bx = bx + paso
+    return piezas
+
+
+def _escalera_caracol(x0, y0, x1, y1, sube) -> list:
+    import math
+
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    radio = min(x1 - x0, y1 - y0) / 2 - 0.08
+    n = max(10, int(sube / 0.19))
+    contrahuella = sube / n
+    paso_ang = math.radians(300 / n)  # algo menos de una vuelta completa
+
+    piezas = [
+        _caja(cx - 0.06, cy - 0.06, cx + 0.06, cy + 0.06, 0, sube, "metal",
+              "cilindro")
+    ]
+    altura = 0.0
+    for i in range(n):
+        altura += contrahuella
+        ang = i * paso_ang
+        ex, ey = cx + radio * math.cos(ang), cy + radio * math.sin(ang)
+        piezas.append(_caja(
+            min(cx, ex), min(cy, ey), max(cx, ex), max(cy, ey),
+            altura - 0.05, altura, "madera",
+        ))
+    return piezas
+
+
+# ------------------------------------------------------------
 # Escena completa
 # ------------------------------------------------------------
 
+def _desplazar(escena, dz) -> dict:
+    """Sube toda la escena `dz` metros (para apilar plantas)."""
+    if not dz:
+        return escena
+    for grupo in ("muros", "pisos", "prismas"):
+        for p in escena.get(grupo, []):
+            p["h0"] = _r(p["h0"] + dz)
+            p["h1"] = _r(p["h1"] + dz)
+    for p in escena.get("piezas", []):
+        p["h0"] = _r(p["h0"] + dz)
+        p["h1"] = _r(p["h1"] + dz)
+    for r in escena.get("rotulos", []):
+        r["z"] = _r(dz)
+    return escena
+
+
 def generar_escena_3d(
-    piso, capas=CAPAS_POR_DEFECTO, resaltar=frozenset(), detalle=False
+    piso, capas=CAPAS_POR_DEFECTO, resaltar=frozenset(), detalle=False,
+    base_z=0.0,
 ) -> dict:
     """Escena serializable a JSON de un `ResultadoPlano`.
 
@@ -412,10 +607,7 @@ def generar_escena_3d(
     ambientes = piso.geometrias["ambientes"]
     etiquetas = etiquetas_ambientes(piso.distribucion)
 
-    muros = [
-        {"anillos": _anillos(p), "h0": 0.0, "h1": ALTURA_MURO, "material": "muro"}
-        for p in _poligonos((piso.aberturas or {}).get("muros_con_aberturas"))
-    ]
+    muros = _muros_de_planta(piso, ambientes)
 
     pisos = []
     rotulos = []
@@ -454,9 +646,24 @@ def generar_escena_3d(
             if detalle:
                 piezas += detalle_3d.marco_de_ventana(ventana, _antepecho(ventana))
 
+    # Escaleras: peldaños que suben al piso siguiente (siempre, es estructura).
+    for ambiente in ambientes:
+        if tipo_base(ambiente["id"]) == "escalera":
+            piezas += piezas_de_escalera(ambiente)
+
+    # Terrazas: macetas y pérgola de madera (su mobiliario propio).
+    for ambiente in ambientes:
+        if _es_terraza(ambiente):
+            piezas += piezas_de_terraza(ambiente)
+
     muebles = (piso.mobiliario or {}).get("mobiliario", [])
     if "muebles" in capas:
         for mueble in muebles:
+            x, y = mueble["x"], mueble["y"]
+            centro = Point(x + mueble["ancho"] / 2, y + mueble["largo"] / 2)
+            ambiente = _ambiente_en(ambientes, centro)
+            if ambiente is not None and _es_terraza(ambiente):
+                continue  # la terraza lleva sus macetas, no muebles de interior
             piezas += piezas_de_mueble(mueble, ambientes)
         if detalle:
             piezas += detalle_3d.decoracion(
@@ -487,7 +694,67 @@ def generar_escena_3d(
         escena["prismas"] = detalle_3d.zocalos(piso)
         escena["piezas"] += detalle_3d.entrada(piso)
 
-    return escena
+    return _desplazar(escena, base_z)
+
+
+def _contorno(piso):
+    return unary_union([a["poligono"] for a in piso.geometrias["ambientes"]])
+
+
+def _escalera_de(piso):
+    return next(
+        (a["poligono"] for a in piso.geometrias["ambientes"]
+         if tipo_base(a["id"]) == "escalera"),
+        None,
+    )
+
+
+def _losa(poligono, h0, h1, material) -> list:
+    """Prismas de losa de un contorno (puede ser varias piezas)."""
+    return [
+        {"anillos": _anillos(p), "h0": _r(h0), "h1": _r(h1), "material": material}
+        for p in _poligonos(poligono)
+    ]
+
+
+def generar_escena_casa(
+    pisos, capas=CAPAS_POR_DEFECTO, detalle=False
+) -> dict:
+    """Escena de la casa completa: plantas apiladas con entrepiso y azotea."""
+    pisos = list(pisos)
+    base = generar_escena_3d(pisos[0], capas, detalle=detalle, base_z=0.0)
+
+    for grupo in ("muros", "pisos", "piezas", "prismas", "rotulos"):
+        base.setdefault(grupo, [])
+
+    for i, piso in enumerate(pisos):
+        if i > 0:
+            parcial = generar_escena_3d(
+                piso, capas, detalle=detalle, base_z=i * ALTURA_ENTREPISO
+            )
+            for grupo in ("muros", "pisos", "piezas", "prismas", "rotulos"):
+                base[grupo] += parcial.get(grupo, [])
+
+        # Losa sobre la planta (entrepiso o azotea), con hueco en la escalera.
+        techo_z = i * ALTURA_ENTREPISO + ALTURA_MURO
+        es_azotea = i == len(pisos) - 1
+        contorno = _contorno(piso)
+        hueco = None if es_azotea else _escalera_de(piso)
+        losa = contorno.difference(hueco) if hueco is not None else contorno
+        base["prismas"] += _losa(losa, techo_z, techo_z + GROSOR_LOSA, "losa")
+
+        if es_azotea:
+            # Parapeto: franja interior del borde del contorno.
+            ring = contorno.difference(contorno.buffer(-ESPESOR_PARAPETO))
+            base["prismas"] += _losa(
+                ring, techo_z + GROSOR_LOSA,
+                techo_z + GROSOR_LOSA + ALTO_PARAPETO_AZOTEA, "parapeto",
+            )
+
+    base["altura_total"] = _r(
+        len(pisos) * ALTURA_ENTREPISO + ALTO_PARAPETO_AZOTEA
+    )
+    return base
 
 
 def json_seguro(datos) -> str:

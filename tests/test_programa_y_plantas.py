@@ -167,6 +167,26 @@ def test_un_bano_baja_si_arriba_hay_dos_o_mas():
     assert ambientes[2].cantidad == 2, "no modifica la entrada"
 
 
+def test_la_terraza_sube_cuando_hay_privados_arriba():
+    ambientes = [Ambiente(nombre="sala"), Ambiente(nombre="dormitorio", cantidad=2),
+                 Ambiente(nombre="terraza")]
+
+    baja, alta = repartir_en_plantas(ambientes)
+
+    assert "terraza" not in [a.nombre for a in baja]
+    assert "terraza" in [a.nombre for a in alta]
+
+
+def test_la_terraza_se_queda_abajo_sin_planta_alta():
+    ambientes = [Ambiente(nombre="sala"), Ambiente(nombre="cocina"),
+                 Ambiente(nombre="terraza")]
+
+    baja, alta = repartir_en_plantas(ambientes)
+
+    assert alta == []
+    assert "terraza" in [a.nombre for a in baja]
+
+
 def test_las_relaciones_imposibles_en_una_planta_se_descartan():
     ambientes = [Ambiente(nombre="sala"), Ambiente(nombre="cocina")]
     relaciones = [["sala", "cocina"], ["sala", "dormitorio"], ["sala", "sala"]]

@@ -102,6 +102,9 @@ const PROPIEDADES = {
   pantalla: { color: 0x14181F, roughness: 0.15, metalness: 0.3 },
   madera_oscura: { color: 0x6B4E3A, roughness: 0.6 },
   toalla: { color: 0xE8EEF3, roughness: 1 },
+  losa: { color: 0xC2C5C9, roughness: 0.95 },
+  parapeto: { color: 0xECEFF2, roughness: 0.92 },
+  pergola: { color: 0x7A5537, roughness: 0.7 },
 };
 
 // Texturas generadas por código (sin imágenes externas); 1 repetición = 1 m.
@@ -255,9 +258,10 @@ function pieza(p) {
 
 const [vx0, vy0, vx1, vy1] = escena.vivienda;
 const [tx0, ty0, tx1, ty1] = escena.terreno;
+const alturaCasa = escena.altura_total || escena.altura_muro;
 const tamano = Math.max(vx1 - vx0, vy1 - vy0, 4);
-const centro = new THREE.Vector3((vx0 + vx1) / 2, 0.8, -(vy0 + vy1) / 2);
-const radio = 0.5 * Math.hypot(vx1 - vx0, vy1 - vy0, escena.altura_muro);
+const centro = new THREE.Vector3((vx0 + vx1) / 2, alturaCasa / 2, -(vy0 + vy1) / 2);
+const radio = 0.5 * Math.hypot(vx1 - vx0, vy1 - vy0, alturaCasa);
 
 function rotulo(r) {
   const lienzoTexto = document.createElement("canvas");
@@ -286,7 +290,7 @@ function rotulo(r) {
   );
   const escala = Math.max(0.55, tamano * 0.045);
   sprite.scale.set(escala * 3.05, escala, 1);
-  sprite.position.set(r.x, escena.altura_muro + 0.45, -r.y);
+  sprite.position.set(r.x, (r.z || 0) + escena.altura_muro + 0.45, -r.y);
   sprite.renderOrder = 10;
   return sprite;
 }

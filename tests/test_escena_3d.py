@@ -6,14 +6,20 @@ from dataclasses import replace
 
 import pytest
 
+from src.services.pipeline import construir_multipisos, construir_plano
 from src.ui.escena_3d import (
+    ALTURA_ENTREPISO,
     ALTURA_MURO,
+    ALTURA_PARAPETO_TERRAZA,
     ALTURA_PUERTA,
+    ALTO_PARAPETO_AZOTEA,
     ANTEPECHO,
     ANTEPECHO_ALTO,
+    GROSOR_LOSA,
     aclarar,
     documento_3d,
     generar_escena_3d,
+    generar_escena_casa,
     json_seguro,
     lado_de_pared,
     piezas_de_mueble,
@@ -175,6 +181,113 @@ def test_un_mueble_desconocido_es_una_caja(plano):
     )
 
     assert len(piezas) == 1 and piezas[0]["h1"] == 0.75
+
+
+# ---------------- Casa completa, escaleras y terrazas ----------------
+
+SIN_MUEBLES = CAPAS_POR_DEFECTO - {"muebles"}
+
+
+def _plano_con(distribucion, ancho, largo, tmp_path):
+    return construir_plano(distribucion, ancho, largo, tmp_path / "p.dxf")
+
+
+def test_base_z_sube_toda_la_escena(plano):
+    arriba = generar_escena_3d(plano, base_z=3.0)
+    suelo = generar_escena_3d(plano)
+
+    assert all(m["h0"] == 3.0 for m in arriba["muros"])
+    assert min(p["h0"] for p in arriba["pisos"]) == 3.0
+    assert all(r.get("z") == 3.0 for r in arriba["rotulos"])
+    # El mismo número de piezas, solo desplazadas.
+    assert len(arriba["piezas"]) == len(suelo["piezas"])
+    assert min(p["h0"] for p in arriba["piezas"]) == pytest.approx(
+        min(p["h0"] for p in suelo["piezas"]) + 3.0
+    )
+
+
+def test_la_escalera_recta_genera_peldanos_que_suben(tmp_path):
+    distribucion = [
+        {"id": "sala_1", "nombre": "sala", "x": 0.0, "y": 0.0, "ancho": 4.0, "largo": 5.0},
+        {"id": "escalera_1", "nombre": "escalera", "x": 4.0, "y": 0.0,
+         "ancho": 1.2, "largo": 5.0},
+    ]
+    escena = generar_escena_3d(_plano_con(distribucion, 10, 10, tmp_path), SIN_MUEBLES)
+
+    peldanos = sorted(p["h1"] for p in _materiales(escena, "madera"))
+
+    assert len(peldanos) >= 5
+    assert peldanos[0] < peldanos[-1] == pytest.approx(ALTURA_ENTREPISO)
+    assert peldanos == sorted(peldanos)
+
+
+def test_la_escalera_cuadrada_es_de_caracol(tmp_path):
+    distribucion = [
+        {"id": "sala_1", "nombre": "sala", "x": 0.0, "y": 0.0, "ancho": 4.0, "largo": 4.0},
+        {"id": "escalera_1", "nombre": "escalera", "x": 4.0, "y": 0.0,
+         "ancho": 2.2, "largo": 2.2},
+    ]
+    escena = generar_escena_3d(_plano_con(distribucion, 10, 10, tmp_path), SIN_MUEBLES)
+
+    postes = [p for p in _materiales(escena, "metal") if p["forma"] == "cilindro"]
+
+    assert postes, "la escalera de caracol tiene un poste central"
+    assert postes[0]["h1"] == pytest.approx(ALTURA_ENTREPISO)
+    assert len(_materiales(escena, "madera")) >= 10
+
+
+def test_la_terraza_tiene_parapeto_bajo_macetas_y_pergola(tmp_path):
+    distribucion = [
+        {"id": "sala_1", "nombre": "sala", "x": 0.0, "y": 0.0, "ancho": 4.0, "largo": 4.0},
+        {"id": "terraza_1", "nombre": "terraza", "x": 4.0, "y": 0.0,
+         "ancho": 4.0, "largo": 4.0},
+    ]
+    escena = generar_escena_3d(_plano_con(distribucion, 10, 10, tmp_path))
+
+    parapetos = [m for m in escena["muros"] if m["material"] == "parapeto"]
+
+    assert parapetos, "la terraza baja sus muros a la cadera"
+    assert all(m["h1"] == pytest.approx(ALTURA_PARAPETO_TERRAZA) for m in parapetos)
+    assert _materiales(escena, "maceta"), "la terraza lleva macetas"
+    assert _materiales(escena, "pergola"), "la terraza lleva pérgola de madera"
+    # Ningún muro completo coincide con el anillo del parapeto.
+    assert all(m["h1"] == ALTURA_MURO for m in escena["muros"] if m["material"] == "muro")
+
+
+def test_casa_completa_apila_pisos_con_entrepiso_y_azotea(tmp_path):
+    baja = [
+        {"id": "sala_1", "nombre": "sala", "x": 0.0, "y": 0.0, "ancho": 4.0, "largo": 4.0},
+        {"id": "escalera_1", "nombre": "escalera", "x": 4.0, "y": 0.0,
+         "ancho": 1.2, "largo": 4.0},
+    ]
+    alta = [
+        {"id": "dormitorio_1", "nombre": "dormitorio", "x": 0.0, "y": 0.0,
+         "ancho": 4.0, "largo": 4.0},
+        {"id": "escalera_1", "nombre": "escalera", "x": 4.0, "y": 0.0,
+         "ancho": 1.2, "largo": 4.0},
+    ]
+    resultado = construir_multipisos([baja, alta], 10, 10, tmp_path / "p.dxf")
+
+    escena = generar_escena_casa(resultado.pisos)
+
+    # Dos niveles de piso: planta baja a 0 y planta alta elevada.
+    niveles = sorted({round(p["h0"], 2) for p in escena["pisos"]})
+    assert niveles == [0.0, round(ALTURA_ENTREPISO, 2)]
+    assert escena["altura_total"] == pytest.approx(
+        2 * ALTURA_ENTREPISO + ALTO_PARAPETO_AZOTEA
+    )
+
+    losas = [m for m in escena["prismas"] if m["material"] == "losa"]
+    parapetos = [m for m in escena["prismas"] if m["material"] == "parapeto"]
+    assert losas and parapetos, "hay entrepiso/azotea y parapeto de azotea"
+    # El entrepiso (a la altura del muro de la baja) no cubre la escalera.
+    from shapely.geometry import Point, Polygon
+
+    entrepisos = [m for m in losas if round(m["h0"], 2) == round(ALTURA_MURO, 2)]
+    hueco = Point(4.6, 2.0)  # dentro de la escalera (x 4..5.2)
+    assert not any(
+        Polygon(m["anillos"][0], m["anillos"][1:]).covers(hueco) for m in entrepisos
+    ), "el entrepiso deja libre el hueco de la escalera"
 
 
 # ---------------- Página HTML ----------------

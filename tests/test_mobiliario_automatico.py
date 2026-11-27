@@ -78,14 +78,14 @@ def test_lavanderia_recibe_lavadora_y_secadora():
     assert "secadora" in tipos
 
 
-def test_terraza_recibe_mesa_comedor():
+def test_la_terraza_no_lleva_muebles_de_interior():
+    # La terraza es exterior: en 3D recibe macetas y pérgola, no mobiliario.
     geo = generar_geometrias(
         [{"id": "terraza_1", "nombre": "Terraza", "x": 0, "y": 0, "ancho": 4, "largo": 4}],
         10, 10,
     )
     r = amueblar_automaticamente(geo)
-    tipos = [m["tipo"] for m in r["mobiliario"]]
-    assert "mesa_comedor" in tipos
+    assert r["mobiliario"] == []
 
 
 def test_dormitorio_principal_recibe_cama_queen():

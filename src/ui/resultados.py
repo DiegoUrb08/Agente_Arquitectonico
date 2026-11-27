@@ -5,7 +5,7 @@ from html import escape
 import streamlit as st
 
 from src.planning.orientacion import ventanas_por_ambiente
-from src.ui.escena_3d import documento_3d, generar_escena_3d
+from src.ui.escena_3d import documento_3d, generar_escena_3d, generar_escena_casa
 from src.ui.pantalla_completa import documento_svg
 from src.ui.proyecto import dimensiones_terreno, pisos_de
 from src.ui.plano_svg import (
@@ -32,6 +32,9 @@ VISTA_VIVIENDA = "Ajustar a la vivienda"
 MODO_2D = "Plano 2D"
 MODO_3D = "Vista 3D"
 ALTURA_3D = 560
+
+VISTA_PLANTA = "Esta planta"
+VISTA_CASA = "Casa completa"
 
 
 def etiquetas_de_pisos(cantidad: int) -> list[str]:
@@ -104,10 +107,15 @@ def _mostrar_3d(piso, capas, clave: str, cambiados, detalle: bool) -> None:
     st.iframe(documento_3d(escena, uid=clave), height=ALTURA_3D)
 
 
+def _mostrar_3d_casa(pisos, capas, clave: str, detalle: bool) -> None:
+    escena = generar_escena_casa(pisos, capas, detalle=detalle)
+    st.iframe(documento_3d(escena, uid=f"{clave}-casa"), height=ALTURA_3D)
+
+
 @st.fragment
 def visor_plano(
     piso, clave: str, cambiados=frozenset(), archivo: str = "plano.svg",
-    norte: str | None = None, retiros: dict | None = None,
+    norte: str | None = None, retiros: dict | None = None, pisos=None,
 ) -> None:
     """Vista previa con capas conmutables; solo se vuelve a ejecutar este bloque."""
 
@@ -133,12 +141,27 @@ def visor_plano(
                 "lento en equipos modestos."
             ),
         )
+        alcance = VISTA_PLANTA
+        if pisos is not None and len(pisos) > 1:
+            alcance = st.segmented_control(
+                "Alcance", [VISTA_PLANTA, VISTA_CASA], default=VISTA_PLANTA,
+                key=f"alcance_{clave}",
+            )
         st.html(_leyenda_html(piso))
-        _mostrar_3d(piso, capas, clave, cambiados, detalle)
-        if cambiados and "cambios" in capas:
-            st.caption("En ámbar: el piso de lo que cambió en esta versión.")
+        if alcance == VISTA_CASA:
+            _mostrar_3d_casa(pisos, capas, clave, detalle)
+            st.caption(
+                "Casa completa: pisos apilados con entrepiso y azotea. "
+                "El resaltado de cambios solo se ve por planta."
+            )
         else:
-            st.caption("Techos abiertos; las capas «Medidas» y «Cotas» solo se ven en 2D.")
+            _mostrar_3d(piso, capas, clave, cambiados, detalle)
+            if cambiados and "cambios" in capas:
+                st.caption("En ámbar: el piso de lo que cambió en esta versión.")
+            else:
+                st.caption(
+                    "Techos abiertos; las capas «Medidas» y «Cotas» solo se ven en 2D."
+                )
         return
 
     por_defecto = VISTA_VIVIENDA if fraccion_ocupada(piso) < 0.5 else VISTA_TERRENO
@@ -307,7 +330,8 @@ def mostrar_resultado(
 
     with pestanas[0]:
         visor_plano(
-            piso, f"{clave}-{indice}", cambiados, archivo, norte, retiros
+            piso, f"{clave}-{indice}", cambiados, archivo, norte, retiros,
+            pisos=pisos,
         )
     with pestanas[1]:
         tabla_ambientes(piso, norte)
