@@ -426,6 +426,13 @@ Límites:
 - La puerta de un garaje abre en 3D hacia la casa.
 - Medido en 60 plantas (942 piezas esperadas): faltantes de 43 a 0, sin superposiciones ni pasos bloqueados; 27 piezas con medidas reducidas y 5 dentro del barrido de una puerta (que debería abrir hacia el otro lado; el DXF no cambia el sentido). El auto entra de frente: un garaje con menos de 3,6 m de fondo queda vacío.
 
+## Lámina en PDF — ✅ IMPLEMENTADA (2026-11-26)
+- Botón «Lámina (PDF)»; se genera al pulsarlo. `src/lamina/pdf.py` (`generar_lamina`, ReportLab, nueva dependencia en `requirements.txt`).
+- Una hoja A3 apaisada por planta, todas con la misma escala normalizada (1:50, 1:75, 1:100…): muros rellenos; puertas, ventanas, muebles y escalera con los mismos símbolos del DXF; nombre, área y medidas por ambiente; cotas del terreno.
+- Panel: cuadro de áreas con totales, escala gráfica, norte, membrete (nombre del proyecto, planta, escala, terreno, fecha, número de lámina) y aviso de anteproyecto.
+- Norte, retiros y rótulo «CALLE» solo si el proyecto tiene requerimientos (no al abrir un DXF).
+- Límites: formato fijo A3; sin logotipo, autor ni datos del propietario; la escala solo es exacta imprimiendo al 100 %; sin cortes ni elevaciones. Falta imprimirla en papel.
+
 ## Exportación BIM
 - **Exportación BIM — ✅ IMPLEMENTADA (2026-11-26).** Botón «Modelo BIM (IFC)» junto a DXF y CSV; el archivo se genera solo al pulsarlo (descarga diferida de Streamlit). `src/bim/ifc.py` (`generar_ifc`, IfcOpenShell 0.9, obligatoria en `requirements.txt`) produce IFC4 en metros:
   - Proyecto → sitio → edificio → una planta por piso (cada 2,80 m).
@@ -445,6 +452,7 @@ Límites:
 - Probar el botón de pantalla completa en un navegador real.
 - Abrir un `.ifc` en Revit, ArchiCAD o BIM Vision.
 - Guardar un proyecto en archivo e importarlo desde el navegador.
+- Descargar la lámina PDF desde la app e imprimirla en A3 para comprobar la escala.
 - Abrir un DXF real hecho con otro programa.
 
 ### Funcionalidad
@@ -453,7 +461,6 @@ Límites:
 - Retiros en el DXF, el 3D y el IFC.
 - Eliminar las ranuras angostas entre ambientes (requiere penalizarlas en el optimizador).
 - Medidas en 3D y en el IFC, o medidas libres de pared a pared.
-- Lámina en PDF con plano, cuadro de áreas, escala y rótulo.
 - BIM con materiales, cubierta y escalera como IfcStair.
 - El editor solo opera con habitaciones rectangulares.
 

@@ -13,6 +13,7 @@ from src.ai.interpreter import interpretar_instruccion
 from src.ai.ollama_client import OllamaError
 from src.ai.providers import LLMProviderError
 from src.bim.ifc import generar_ifc
+from src.lamina.pdf import generar_lamina
 from src.models.requirements import Retiros
 from src.ui import almacen, guardado
 from src.ui import proyecto as pry
@@ -470,13 +471,29 @@ def espacio_de_trabajo(proyecto: dict) -> None:
         _mostrar_mensajes(proyecto["mensajes"])
 
     with derecha:
-        descarga_dxf, descarga_csv, descarga_ifc = st.columns([1, 1, 1])
+        descarga_pdf, descarga_dxf, descarga_csv, descarga_ifc = st.columns(4)
+        resultado_actual = actual["resultado"]
+        descarga_pdf.download_button(
+            "Lámina (PDF)",
+            # Se genera al pulsar, igual que el modelo BIM.
+            data=lambda: generar_lamina(
+                resultado_actual,
+                proyecto.get("nombre") or "Proyecto",
+                proyecto["requerimientos"],
+            ),
+            file_name="lamina.pdf",
+            mime="application/pdf",
+            type="primary",
+            on_click="ignore",
+            width="stretch",
+            help="Una hoja A3 por planta, a escala, con cuadro de áreas, norte "
+                 "y membrete. Lista para imprimir.",
+        )
         descarga_dxf.download_button(
             "Descargar DXF",
             data=actual["dxf"],
             file_name="plano.dxf",
             mime="application/dxf",
-            type="primary",
             on_click="ignore",
             width="stretch",
         )
@@ -488,7 +505,6 @@ def espacio_de_trabajo(proyecto: dict) -> None:
             on_click="ignore",
             width="stretch",
         )
-        resultado_actual = actual["resultado"]
         descarga_ifc.download_button(
             "Modelo BIM (IFC)",
             # Se genera solo al pulsar: no hace falta para ver el plano.

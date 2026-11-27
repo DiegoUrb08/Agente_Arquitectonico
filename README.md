@@ -43,7 +43,9 @@ asistente que crea el archivo `.env` por ti.
 3. **Pídele cambios en la conversación**: *«reduce el comedor a 8 m²»* o
    *«pon la cocina al lado del dormitorio»*. Cada cambio crea una
    versión nueva, resalta en el plano lo que cambió y puedes **deshacerlo**.
-4. **Descarga** el plano en DXF (AutoCAD, LibreCAD...), una imagen en SVG, el
+4. **Descarga** la **lámina en PDF** lista para imprimir (una hoja A3 por
+   planta, a escala, con cuadro de áreas, norte, escala gráfica y membrete), el
+   plano en DXF (AutoCAD, LibreCAD...), una imagen en SVG, el
    cuadro de áreas en CSV y el **modelo BIM en IFC4** (espacios, muros, puertas,
    ventanas, losa y mobiliario), que se abre en Revit 2020+, ArchiCAD 23+,
    BlenderBIM o visores gratuitos como BIM Vision.
@@ -302,12 +304,13 @@ src/
   cad/                  # Generación y edición de DXF (ezdxf)
   services/             # Pipeline completo: LLM → optimizador → DXF
   bim/                  # Exportación a IFC4 (IfcOpenShell)
+  lamina/               # Lámina A3 en PDF (ReportLab)
   ui/                   # Interfaz Streamlit: tema blueprint, vista previa SVG del plano
 server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
 static/three/           # Copia fija de Three.js 0.160.0 (MIT) para la vista 3D sin internet
-tests/                  # 630 tests pytest
+tests/                  # 648 tests pytest
 ```
 
 ---
