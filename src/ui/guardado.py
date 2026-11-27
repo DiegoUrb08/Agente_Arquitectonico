@@ -78,6 +78,7 @@ class Guardado(_Modelo):
     version: int
     id: str | None = None
     nombre: str = Field(max_length=200)
+    autor: str = Field(default="", max_length=120)
     creado: str = Field(default="", max_length=40)
     modificado: str = Field(default="", max_length=40)
     requerimientos: RequerimientosArquitectonicos | None = None
@@ -115,6 +116,7 @@ def exportar(proyecto: dict) -> bytes:
         "version": VERSION,
         "id": proyecto.get("id"),
         "nombre": proyecto.get("nombre") or "Proyecto",
+        "autor": proyecto.get("autor", ""),
         "creado": proyecto.get("creado", ""),
         "modificado": proyecto.get("modificado", ""),
         "requerimientos": proyecto["requerimientos"],
@@ -210,6 +212,7 @@ def importar(
 
     return {
         "nombre": datos.nombre,
+        "autor": datos.autor,
         "requerimientos": datos.requerimientos,
         "versiones": versiones,
         "mensajes": [pry._mensaje(m.rol, m.texto) for m in datos.mensajes],

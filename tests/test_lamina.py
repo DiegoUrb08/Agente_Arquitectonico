@@ -150,3 +150,20 @@ def test_titulos_de_plantas():
     assert titulos_de_plantas(1) == ["PLANTA ÚNICA"]
     assert titulos_de_plantas(2) == ["PLANTA BAJA", "PLANTA ALTA"]
     assert titulos_de_plantas(3) == ["PLANTA BAJA", "PLANTA ALTA 1", "PLANTA ALTA 2"]
+
+
+def test_el_membrete_lleva_el_nombre_y_el_autor(una_planta):
+    pdf = generar_lamina(una_planta, "Casa Pérez", autor="  Arq.  María Núñez ")
+
+    texto = _textos(_hojas(pdf)[0]).split("\n")
+
+    assert "Casa Pérez" in texto
+    assert texto[texto.index("AUTOR") + 1] == "Arq. María Núñez"
+
+
+@pytest.mark.parametrize("autor", ["", "a" * 120])
+def test_la_casilla_de_autor_admite_vacio_y_textos_largos(una_planta, autor):
+    texto = _textos(_hojas(generar_lamina(una_planta, autor=autor))[0])
+
+    assert "AUTOR" in texto
+    assert "a" * 120 not in texto

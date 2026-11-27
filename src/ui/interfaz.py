@@ -79,7 +79,50 @@ def _autoguardar(proyecto: dict) -> None:
         st.session_state.pop("aviso_guardado", None)
 
 
+# Campo del membrete -> clave de su casilla.
+CASILLAS_MEMBRETE = {"nombre": "membrete_nombre", "autor": "membrete_autor"}
+
+
+def _olvidar_casillas() -> None:
+    """Las casillas del membrete se vuelven a llenar con el proyecto actual."""
+    for clave in CASILLAS_MEMBRETE.values():
+        st.session_state.pop(clave, None)
+
+
+def _cambiar_membrete(proyecto: dict, campo: str) -> None:
+    clave = CASILLAS_MEMBRETE[campo]
+    valor = " ".join(st.session_state[clave].split())
+    # El nombre identifica al proyecto: no puede quedar vacío.
+    if campo == "nombre" and not valor:
+        st.session_state[clave] = proyecto.get("nombre", "")
+        return
+    proyecto[campo] = valor
+    _autoguardar(proyecto)
+
+
+def _datos_del_membrete(proyecto: dict) -> None:
+
+    with st.expander("Nombre del proyecto y autor"):
+        for campo, rotulo, ayuda in (
+            ("nombre", "Nombre del proyecto", None),
+            ("autor", "Autor", "Opcional. Si queda vacío, la casilla sale en blanco."),
+        ):
+            clave = CASILLAS_MEMBRETE[campo]
+            if clave not in st.session_state:
+                st.session_state[clave] = proyecto.get(campo, "")
+            st.text_input(
+                rotulo,
+                key=clave,
+                max_chars=200 if campo == "nombre" else 120,
+                help=ayuda,
+                on_change=_cambiar_membrete,
+                args=(proyecto, campo),
+            )
+        st.caption("Aparecen en el membrete de la lámina PDF.")
+
+
 def _entrar(proyecto: dict) -> None:
+    _olvidar_casillas()
     st.session_state.pop("aviso_guardado", None)
     st.session_state.pop("por_borrar", None)
     st.session_state["proyecto"] = proyecto
@@ -480,6 +523,7 @@ def espacio_de_trabajo(proyecto: dict) -> None:
                 resultado_actual,
                 proyecto.get("nombre") or "Proyecto",
                 proyecto["requerimientos"],
+                autor=proyecto.get("autor", ""),
             ),
             file_name="lamina.pdf",
             mime="application/pdf",
@@ -517,6 +561,8 @@ def espacio_de_trabajo(proyecto: dict) -> None:
                  "mobiliario. Se abre en Revit, ArchiCAD, BlenderBIM o un "
                  "visor gratuito como BIM Vision.",
         )
+
+        _datos_del_membrete(proyecto)
 
         mostrar_resultado(
             actual["resultado"],

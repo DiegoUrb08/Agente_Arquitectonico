@@ -44,7 +44,8 @@ asistente que crea el archivo `.env` por ti.
    *«pon la cocina al lado del dormitorio»*. Cada cambio crea una
    versión nueva, resalta en el plano lo que cambió y puedes **deshacerlo**.
 4. **Descarga** la **lámina en PDF** lista para imprimir (una hoja A3 por
-   planta, a escala, con cuadro de áreas, norte, escala gráfica y membrete), el
+   planta, a escala, con cuadro de áreas, norte, escala gráfica y membrete con el nombre del
+   proyecto y el autor, editables bajo los botones de descarga), el
    plano en DXF (AutoCAD, LibreCAD...), una imagen en SVG, el
    cuadro de áreas en CSV y el **modelo BIM en IFC4** (espacios, muros, puertas,
    ventanas, losa y mobiliario), que se abre en Revit 2020+, ArchiCAD 23+,
@@ -310,7 +311,7 @@ server/
   proxy_server.py       # Servidor Flask (guarda GROQ_API_KEY server-side)
   arrancar.py           # Lanzador: proxy + túnel Cloudflare
 static/three/           # Copia fija de Three.js 0.160.0 (MIT) para la vista 3D sin internet
-tests/                  # 648 tests pytest
+tests/                  # 653 tests pytest
 ```
 
 ---

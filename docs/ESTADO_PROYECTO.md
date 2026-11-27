@@ -429,9 +429,10 @@ Límites:
 ## Lámina en PDF — ✅ IMPLEMENTADA (2026-11-26)
 - Botón «Lámina (PDF)»; se genera al pulsarlo. `src/lamina/pdf.py` (`generar_lamina`, ReportLab, nueva dependencia en `requirements.txt`).
 - Una hoja A3 apaisada por planta, todas con la misma escala normalizada (1:50, 1:75, 1:100…): muros rellenos; puertas, ventanas, muebles y escalera con los mismos símbolos del DXF; nombre, área y medidas por ambiente; cotas del terreno.
-- Panel: cuadro de áreas con totales, escala gráfica, norte, membrete (nombre del proyecto, planta, escala, terreno, fecha, número de lámina) y aviso de anteproyecto.
+- Panel: cuadro de áreas con totales, escala gráfica, norte, membrete (nombre del proyecto, autor, planta, escala, terreno, fecha, número de lámina) y aviso de anteproyecto.
 - Norte, retiros y rótulo «CALLE» solo si el proyecto tiene requerimientos (no al abrir un DXF).
-- Límites: formato fijo A3; sin logotipo, autor ni datos del propietario; la escala solo es exacta imprimiendo al 100 %; sin cortes ni elevaciones. Falta imprimirla en papel.
+- «Nombre del proyecto y autor» (desplegable bajo las descargas): se guardan con el proyecto; sin autor, la casilla sale en blanco.
+- Límites: formato fijo A3; sin logotipo ni datos del propietario; la escala solo es exacta imprimiendo al 100 %; sin cortes ni elevaciones. Falta imprimirla en papel.
 
 ## Exportación BIM
 - **Exportación BIM — ✅ IMPLEMENTADA (2026-11-26).** Botón «Modelo BIM (IFC)» junto a DXF y CSV; el archivo se genera solo al pulsarlo (descarga diferida de Streamlit). `src/bim/ifc.py` (`generar_ifc`, IfcOpenShell 0.9, obligatoria en `requirements.txt`) produce IFC4 en metros:

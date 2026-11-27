@@ -226,6 +226,43 @@ def test_el_proyecto_se_autoguarda_al_crear_editar_y_deshacer(entorno):
     )
 
 
+def _casilla(at, rotulo):
+    return next(t for t in at.text_input if t.label == rotulo)
+
+
+def test_el_nombre_y_el_autor_se_guardan_y_se_recuperan(entorno):
+    from src.ui import almacen
+
+    at = _con_plano()
+    _casilla(at, "Nombre del proyecto").set_value("Casa Pérez").run()
+    _casilla(at, "Autor").set_value("  María   Núñez ").run()
+
+    assert not at.exception
+    guardado = almacen.abrir(almacen.listar()[0][0]["id"])
+    assert (guardado["nombre"], guardado["autor"]) == ("Casa Pérez", "María Núñez")
+
+    nuevo = _abrir()
+    _boton(nuevo, "Abrir proyecto").click().run()
+    assert _casilla(nuevo, "Nombre del proyecto").value == "Casa Pérez"
+    assert _casilla(nuevo, "Autor").value == "María Núñez"
+
+
+def test_el_nombre_no_puede_quedar_vacio_y_no_pasa_a_otro_proyecto(entorno):
+    at = _con_plano()
+    original = _casilla(at, "Nombre del proyecto").value
+
+    _casilla(at, "Nombre del proyecto").set_value("   ").run()
+    assert _casilla(at, "Nombre del proyecto").value == original
+
+    _casilla(at, "Autor").set_value("Ana").run()
+    _boton(at, "Nuevo proyecto").click().run()
+    at.text_area[0].set_value("Casa en un terreno de 10 x 20 con sala y cocina")
+    _boton(at, "Generar plano").click().run()
+
+    assert not at.exception
+    assert _casilla(at, "Autor").value == ""
+
+
 def test_se_retoma_un_proyecto_de_la_lista(entorno):
     entorno.setattr("src.ui.interfaz.interpretar_edicion", _reducir)
     at = _con_plano()

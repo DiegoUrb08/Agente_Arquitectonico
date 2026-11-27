@@ -34,7 +34,7 @@ ANCHO_PANEL = 105 * mm
 BORDE_LATERAL = 13 * mm
 BORDE_INFERIOR = 15 * mm
 BORDE_SUPERIOR = 3 * mm
-ALTO_MEMBRETE = 66 * mm
+ALTO_MEMBRETE = 77 * mm
 ALTO_REFERENCIAS = 34 * mm
 ALTO_FILA = 6 * mm
 ALTO_FILA_MINIMO = 3.4 * mm
@@ -419,7 +419,8 @@ def _norte_y_escala(c, escala: int, norte, x, y, ancho) -> None:
     c.drawString(bx, by + 5 * mm, "ESCALA GRÁFICA")
 
 
-def _membrete(c, x, y, ancho, nombre, titulo, escala, terreno, fecha, hoja, hojas) -> None:
+def _membrete(c, x, y, ancho, nombre, autor, titulo, escala, terreno, fecha,
+              hoja, hojas) -> None:
     interior = ancho - 6 * mm
     c.setFillColorRGB(*GRIS)
     c.setFont(NORMAL, 7)
@@ -436,9 +437,20 @@ def _membrete(c, x, y, ancho, nombre, titulo, escala, terreno, fecha, hoja, hoja
 
     c.setStrokeColorRGB(*NEGRO)
     c.setLineWidth(0.6)
-    for altura in (33 * mm, 22 * mm, 11 * mm):
+    for altura in (55 * mm, 44 * mm, 33 * mm, 22 * mm, 11 * mm):
         c.line(x, y + altura, x + ancho, y + altura)
     c.line(x + ancho / 2, y + 11 * mm, x + ancho / 2, y + 33 * mm)
+
+    # Sin autor, la casilla queda libre para llenarla a mano.
+    c.setFillColorRGB(*GRIS)
+    c.setFont(NORMAL, 7)
+    c.drawString(x + 3 * mm, y + 51 * mm, "AUTOR")
+    c.setFillColorRGB(*NEGRO)
+    c.setFont(NEGRITA, 10)
+    c.drawString(
+        x + 3 * mm, y + 46.5 * mm,
+        _recortar(" ".join(autor.split()), NEGRITA, 10, interior),
+    )
 
     minx, miny, maxx, maxy = terreno
     datos = (
@@ -465,7 +477,7 @@ def _membrete(c, x, y, ancho, nombre, titulo, escala, terreno, fecha, hoja, hoja
 
 
 def generar_lamina(resultado, nombre: str = "Proyecto", requerimientos=None,
-                   fecha: date | None = None) -> bytes:
+                   fecha: date | None = None, autor: str = "") -> bytes:
     """
     PDF con una hoja A3 por planta de `resultado` (de una o varias plantas).
     Con `requerimientos` se añaden el norte, los retiros y la calle.
@@ -494,6 +506,7 @@ def generar_lamina(resultado, nombre: str = "Proyecto", requerimientos=None,
     salida = io.BytesIO()
     c = canvas.Canvas(salida, pagesize=PAGINA)
     c.setTitle(nombre)
+    c.setAuthor(autor)
     c.setCreator("Agente Arquitectónico")
 
     titulos = titulos_de_plantas(len(pisos))
@@ -513,7 +526,7 @@ def generar_lamina(resultado, nombre: str = "Proyecto", requerimientos=None,
         )
         _norte_y_escala(c, escala, norte, x_panel, y_referencias, ANCHO_PANEL)
         _membrete(
-            c, x_panel, MARGEN, ANCHO_PANEL, nombre, titulo, escala,
+            c, x_panel, MARGEN, ANCHO_PANEL, nombre, autor, titulo, escala,
             _terreno(piso), fecha, hoja, len(pisos),
         )
 
