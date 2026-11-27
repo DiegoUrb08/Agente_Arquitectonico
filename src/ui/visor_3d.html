@@ -105,6 +105,18 @@ const PROPIEDADES = {
   losa: { color: 0xC2C5C9, roughness: 0.95 },
   parapeto: { color: 0xECEFF2, roughness: 0.92 },
   pergola: { color: 0x7A5537, roughness: 0.7 },
+  hueco: { color: 0x1A1F27, roughness: 1 },
+  fantasma: { color: 0x9FD8F5, roughness: 0.4, transparent: true, opacity: 0.16, depthWrite: false },
+  asfalto: { color: 0x3B3F45, roughness: 0.95 },
+  linea_via: { color: 0xF2F2EE, roughness: 0.6 },
+  tierra: { color: 0x6E5238, roughness: 1 },
+  tronco: { color: 0x6B4A2F, roughness: 0.9 },
+  follaje: { color: 0x3F7A3A, roughness: 0.9 },
+  follaje_claro: { color: 0x5E9B4A, roughness: 0.9 },
+  piel: { color: 0xD9AE8C, roughness: 0.8 },
+  ropa: { color: 0x2F6FB0, roughness: 0.9 },
+  ropa_2: { color: 0xB5483F, roughness: 0.9 },
+  ropa_3: { color: 0xD9A441, roughness: 0.9 },
 };
 
 // Texturas generadas por código (sin imágenes externas); 1 repetición = 1 m.
@@ -237,7 +249,7 @@ function prisma(anillos, h0, h1, mat) {
   geometria.rotateX(-Math.PI / 2);
   geometria.translate(0, h0, 0);
   const malla = new THREE.Mesh(geometria, mat);
-  malla.castShadow = true;
+  malla.castShadow = !mat.transparent;
   malla.receiveShadow = true;
   return malla;
 }
@@ -251,6 +263,8 @@ function pieza(p) {
   const malla = new THREE.Mesh(FORMAS[p.forma] || CAJA, mat);
   malla.scale.set(p.x1 - p.x0, p.h1 - p.h0, p.y1 - p.y0);
   malla.position.set((p.x0 + p.x1) / 2, (p.h0 + p.h1) / 2, -(p.y0 + p.y1) / 2);
+  // Giro en planta (radianes, antihorario) alrededor del centro de la pieza.
+  if (p.giro) malla.rotation.y = p.giro;
   malla.castShadow = !mat.transparent;
   malla.receiveShadow = true;
   return malla;

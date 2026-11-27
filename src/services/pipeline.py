@@ -18,6 +18,7 @@ from src.geometry.mobiliario_automatico import amueblar_automaticamente
 from src.geometry.opening_generator import generar_aberturas
 from src.geometry.wall_generator import generar_muros
 from src.geometry.window_generator import generar_ventanas_automaticas
+from src.models.defaults import estimar_terreno_para_vivienda
 from src.models.distribucion import validar_esquema_distribucion
 from src.planning.garaje import avisos_de_garaje
 from src.planning.orientacion import nota_de_orientacion
@@ -85,6 +86,7 @@ def generar_plano(
         if progreso:
             progreso(mensaje)
 
+    requerimientos = estimar_terreno_para_vivienda(requerimientos)
     ancho = requerimientos.ancho_terreno_m
     largo = requerimientos.largo_terreno_m
 
@@ -127,6 +129,20 @@ def _resolver_en_el_lote(requerimientos, resolver) -> list:
     return ubicar(
         distribuciones, requerimientos.ancho_terreno_m,
         requerimientos.largo_terreno_m, requerimientos.retiros,
+        centrar=_centrar_en_lote(requerimientos, distribuciones),
+    )
+
+
+def _centrar_en_lote(requerimientos, distribuciones) -> bool:
+    """
+    La casa va al centro del lote solo si el terreno se calculó (no lo dio el
+    usuario) y no hay garaje: el garaje tiene que dar a la calle.
+    """
+    if not requerimientos.terreno_estimado:
+        return False
+    return not any(
+        tipo_base(a["id"]) == "garaje"
+        for distribucion in distribuciones for a in distribucion
     )
 
 
@@ -154,7 +170,13 @@ def _notas(requerimientos, distribucion) -> list[str]:
     """Lo que el sistema añadió sin que el usuario lo pidiera."""
     pidio = any(tipo_base(a.nombre) == "pasillo" for a in requerimientos.ambientes)
     hay = any(tipo_base(a["id"]) == "pasillo" for a in distribucion)
-    return [NOTA_PASILLO] if hay and not pidio else []
+    notas = [NOTA_PASILLO] if hay and not pidio else []
+    if requerimientos.ambientes_agregados:
+        notas.append(
+            "Toda casa básica lleva sala, comedor, cocina, dormitorio y baño: "
+            "añadí " + ", ".join(requerimientos.ambientes_agregados) + "."
+        )
+    return notas
 
 
 def _avisos(distribucion, puertas, validacion, ventanas, planta_baja=True) -> list[str]:

@@ -35,6 +35,14 @@ class RequerimientosArquitectonicos(BaseModel):
     ancho_terreno_m: float | None = None
     largo_terreno_m: float | None = None
     area_terreno_m2: float | None = None
+    # True cuando el terreno no lo dio el usuario y se calculó desde el área
+    # de la vivienda: entonces la casa se centra en el lote.
+    terreno_estimado: bool = False
+
+    # Casa mínima (un piso, hasta 30 m²): sin reserva de circulación ni pasillo.
+    programa_basico: bool = False
+    # Ambientes que el sistema añadió porque toda casa básica los lleva.
+    ambientes_agregados: list[str] = Field(default_factory=list)
 
     # Superficie total deseada para la vivienda.
     area_total_vivienda_m2: float | None = None

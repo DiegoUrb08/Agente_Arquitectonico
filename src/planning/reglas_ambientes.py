@@ -25,6 +25,11 @@ LONGITUD_MINIMA_ADYACENCIA_DM = 8
 LONGITUD_MINIMA_ACCESO_DM = 12
 MIN_LADO_PASILLO_DM = 12
 
+# Caja de escalera entre dos plantas: con la proporción máxima (2.5) cabe un
+# tramo recto o de ida y vuelta con paso libre ante las puertas.
+AREA_MINIMA_ESCALERA_M2 = 6.0
+AREA_OBJETIVO_ESCALERA_M2 = 7.0
+
 # Hueco mínimo entre ambientes que no deben tocarse (p. ej. dos baños).
 SEPARACION_MINIMA_DM = 10
 

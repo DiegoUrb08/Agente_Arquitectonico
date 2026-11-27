@@ -76,6 +76,42 @@ def test_puede_dar_acceso(desde, hacia, permitido):
     assert puede_dar_acceso(desde, hacia) is permitido
 
 
+@pytest.mark.parametrize("desde, permitido", [
+    ("sala_1", True),
+    ("comedor_1", True),
+    ("dormitorio_1", True),
+    ("dormitorio principal_1", True),
+    ("escalera_1", False),
+    ("pasillo_1", False),
+    ("cocina_1", False),
+])
+def test_a_la_terraza_se_sale_desde_un_ambiente_amplio_o_dormitorio(desde, permitido):
+    assert puede_dar_acceso(desde, "terraza_1") is permitido
+    # Aunque la escalera sea la entrada de la planta alta.
+    assert puede_dar_acceso(desde, "terraza_1", entrada=desde) is permitido
+
+
+@pytest.mark.parametrize("hacia, arriba, permitido", [
+    ("pasillo_1", True, True),
+    ("sala_1", True, True),
+    ("dormitorio_1", True, False),
+    ("bano_1", True, False),
+    # Abajo la escalera es un final de recorrido, no un paso entre ambientes.
+    ("pasillo_1", False, False),
+    ("comedor_1", False, False),
+    ("garaje_1", False, False),
+])
+def test_la_escalera_solo_desemboca_en_la_circulacion(hacia, arriba, permitido):
+    entrada = "escalera_1" if arriba else "sala_1"
+    assert puede_dar_acceso("escalera_1", hacia, entrada=entrada) is permitido
+
+
+def test_a_la_escalera_se_llega_desde_la_circulacion():
+    assert puede_dar_acceso("sala_1", "escalera_1")
+    assert puede_dar_acceso("pasillo_1", "escalera_1")
+    assert not puede_dar_acceso("dormitorio_1", "escalera_1")
+
+
 def test_el_bano_en_suite_solo_se_abre_a_su_dormitorio():
     en_suite = {"bano_2": "dormitorio_1"}
 

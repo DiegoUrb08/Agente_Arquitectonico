@@ -66,6 +66,16 @@ def test_generar_abre_el_espacio_de_trabajo(entorno):
     assert _version(at).startswith("Versión 1")
 
 
+def test_el_chat_va_en_la_barra_lateral_y_el_plano_a_todo_el_ancho(entorno):
+    at = _con_plano()
+
+    assert len(at.sidebar.chat_input) == 1, "la conversación está en la barra lateral"
+    assert [t.label for t in at.main.tabs] == PESTANAS
+    assert not at.sidebar.tabs
+    # El resumen de la planta queda plegado debajo del visor.
+    assert any(e.label == "Resumen de la planta" for e in at.main.expander)
+
+
 def test_el_plano_sobrevive_a_otra_interaccion(entorno):
     """Antes, pulsar 'Descargar' (o cualquier widget) borraba el plano."""
     at = _con_plano()

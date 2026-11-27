@@ -346,7 +346,7 @@ def test_el_area_del_terreno_basta_aunque_el_modelo_pida_las_dimensiones(monkeyp
     assert req.ancho_terreno_m and req.largo_terreno_m
 
 
-def test_sin_ambientes_el_sistema_lo_rechaza_con_un_mensaje_claro(monkeypatch):
+def test_sin_lista_de_ambientes_se_propone_la_casa_basica(monkeypatch):
     datos = {
         "tipo_proyecto": "vivienda",
         "ancho_terreno_m": 10.0,
@@ -356,19 +356,25 @@ def test_sin_ambientes_el_sistema_lo_rechaza_con_un_mensaje_claro(monkeypatch):
     }
     _mockear_provider(monkeypatch, datos)
 
-    with pytest.raises(ValueError, match="No se han especificado ambientes"):
-        interpreter.interpretar_instruccion("una casa de 10 x 20")
+    req = interpreter.interpretar_instruccion("una casa de 10 x 20")
+
+    assert req.area_total_vivienda_m2 == 25
+    assert [a.nombre for a in req.ambientes] == [
+        "sala", "comedor", "cocina", "dormitorio", "baño",
+    ]
 
 
-def test_sin_terreno_el_sistema_lo_rechaza_con_un_mensaje_claro(monkeypatch):
+def test_con_solo_la_lista_de_ambientes_se_calculan_area_y_terreno(monkeypatch):
     datos = {
         "tipo_proyecto": "vivienda",
         "ambientes": [{"nombre": "sala", "cantidad": 1}],
     }
     _mockear_provider(monkeypatch, datos)
 
-    with pytest.raises(ValueError, match="No se especifico el area ni las dimensiones"):
-        interpreter.interpretar_instruccion("una casa con sala")
+    req = interpreter.interpretar_instruccion("una casa con sala")
+
+    assert req.area_total_vivienda_m2 > 0
+    assert req.terreno_estimado and req.ancho_terreno_m and req.largo_terreno_m
 
 
 def test_si_el_modelo_no_marca_nada_no_se_anota_nada(monkeypatch):

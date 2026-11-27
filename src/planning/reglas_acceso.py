@@ -14,7 +14,12 @@ EXTERIOR = "exterior"
 CIRCULACION = {"sala", "comedor", "pasillo", "escalera"}
 SOCIALES = {"sala", "comedor", "cocina"}
 # Ambientes de servicio a los que también se puede entrar desde la cocina.
-DESDE_COCINA = {"lavanderia", "deposito", "terraza", "garaje"}
+DESDE_COCINA = {"lavanderia", "deposito", "garaje"}
+# A la terraza se sale desde un ambiente amplio o un dormitorio, nunca desde
+# la escalera ni un pasillo.
+DESDE_TERRAZA = {"sala", "comedor", "dormitorio"}
+# Desde la escalera solo se pasa a la circulación.
+DESDE_ESCALERA = {"sala", "comedor", "pasillo"}
 
 ORDEN_ENTRADA = ("sala", "comedor", "pasillo", "escalera", "cocina", "estudio")
 ORDEN_ENTRADA_PLANTA_ALTA = ("escalera", "pasillo", "sala", "comedor")
@@ -88,6 +93,15 @@ def puede_dar_acceso(
 
     origen, destino = tipo_base(desde), tipo_base(hacia)
 
+    # Van antes que la entrada: en la planta alta la entrada es la escalera.
+    if destino == "terraza":
+        return origen in DESDE_TERRAZA
+    # La escalera no es un pasillo: abajo se llega a ella y nada más; arriba,
+    # donde es la entrada, desemboca en la circulación, no en un cuarto. Así
+    # queda paso libre al subir y bajar.
+    if origen == "escalera":
+        return desde == entrada and destino in DESDE_ESCALERA
+
     # La entrada reparte hacia cualquier ambiente (p. ej. si no hay sala).
     if desde == entrada:
         return True
@@ -107,7 +121,10 @@ def completar_programa(
     Añade un pasillo cuando hay dos o más dormitorios y baños de acceso común
     y el usuario no pidió uno. Devuelve el mismo objeto si no hace falta.
     """
-    cantidades = {"dormitorio": 0, "bano": 0, "pasillo": 0}
+    cantidades = {
+        "dormitorio": 0, "bano": 0, "pasillo": 0, "escalera": 0, "sala": 0,
+        "comedor": 0,
+    }
     for ambiente in requerimientos.ambientes:
         tipo = tipo_base(normalizar_nombre(ambiente.nombre))
         if tipo in cantidades:
@@ -116,9 +133,22 @@ def completar_programa(
     if cantidades["pasillo"]:
         return requerimientos
 
+    # En la casa básica la sala reparte al dormitorio y al baño.
+    if (
+        requerimientos.programa_basico
+        and cantidades["dormitorio"] <= 1 and cantidades["bano"] <= 1
+    ):
+        return requerimientos
+
     dormitorios, banos = cantidades["dormitorio"], cantidades["bano"]
     privados = 1 if banos >= 2 and dormitorios else 0
-    if dormitorios + banos - privados < 2:
+    # Una planta de cuartos con escalera y sin sala necesita un hall donde
+    # desembarcar (de la escalera solo se pasa a la circulación).
+    desembarco = (
+        cantidades["escalera"] and dormitorios + banos
+        and not cantidades["sala"] + cantidades["comedor"]
+    )
+    if dormitorios + banos - privados < 2 and not desembarco:
         return requerimientos
 
     superficie = sum(

@@ -187,6 +187,17 @@ def test_la_terraza_se_queda_abajo_sin_planta_alta():
     assert "terraza" in [a.nombre for a in baja]
 
 
+def test_la_terraza_no_sube_si_arriba_no_hay_dormitorio():
+    # Sin dormitorio arriba solo se llegaría a ella por la escalera o el baño.
+    ambientes = [Ambiente(nombre="sala"), Ambiente(nombre="baño", cantidad=1),
+                 Ambiente(nombre="terraza")]
+
+    baja, alta = repartir_en_plantas(ambientes)
+
+    assert "terraza" in [a.nombre for a in baja]
+    assert "terraza" not in [a.nombre for a in alta]
+
+
 def test_las_relaciones_imposibles_en_una_planta_se_descartan():
     ambientes = [Ambiente(nombre="sala"), Ambiente(nombre="cocina")]
     relaciones = [["sala", "cocina"], ["sala", "dormitorio"], ["sala", "sala"]]

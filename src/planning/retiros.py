@@ -107,23 +107,31 @@ def trasladar(distribucion: list[dict], dx: float, dy: float) -> list[dict]:
 
 def ubicar(
     distribuciones: list[list[dict]], ancho: float, largo: float,
-    retiros: Retiros | None,
+    retiros: Retiros | None, centrar: bool = False,
 ) -> list[list[dict]]:
     """
     Lleva las plantas, resueltas en el área edificable, a su sitio en el
-    terreno: al frente y centradas. Todas se mueven igual.
+    terreno: al frente y centradas a lo ancho. Todas se mueven igual.
+
+    Con `centrar`, la casa también queda centrada en profundidad (y no pegada
+    a la calle): para lotes calculados desde el área de la vivienda.
     """
     retiros = retiros or Retiros()
-    util_ancho, _ = area_edificable(ancho, largo, retiros)
+    util_ancho, util_largo = area_edificable(ancho, largo, retiros)
     todos = [a for distribucion in distribuciones for a in distribucion]
     x0 = min(a["x"] for a in todos)
     x1 = max(a["x"] + a["ancho"] for a in todos)
     y0 = min(a["y"] for a in todos)
+    y1 = max(a["y"] + a["largo"] for a in todos)
 
     # Hacia abajo al decímetro: nunca invade el retiro derecho.
     margen = math.floor((util_ancho - (x1 - x0)) / 2 * 10 + 1e-6) / 10
     dx = retiros.izquierdo + max(0.0, margen) - x0
-    dy = retiros.frontal - y0
+    if centrar:
+        holgura = math.floor((util_largo - (y1 - y0)) / 2 * 10 + 1e-6) / 10
+        dy = retiros.frontal + max(0.0, holgura) - y0
+    else:
+        dy = retiros.frontal - y0
 
     return [trasladar(d, dx, dy) for d in distribuciones]
 

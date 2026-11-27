@@ -9,10 +9,11 @@ import json
 from pathlib import Path
 
 from shapely.geometry import Point
-from shapely.ops import unary_union
+from shapely.ops import linemerge, unary_union
 
 from src.geometry.opening_generator import construir_abertura
-from src.ui import detalle_3d
+from src.ui import detalle_3d, entorno_3d
+from src.ui.escalera_3d import baranda_de_llegada, puertas_de, trazar_escalera
 from src.ui.pantalla_completa import BOTON as BOTON_PANTALLA_COMPLETA
 from src.planning.reglas_acceso import CIRCULACION, EXTERIOR, tipo_base
 from src.ui.plano_svg import (
@@ -37,8 +38,11 @@ ALTURA_ENTREPISO = ALTURA_MURO + GROSOR_LOSA  # cuánto sube cada planta
 ALTO_PARAPETO_AZOTEA = 1.0
 ESPESOR_PARAPETO = 0.12
 
-# Terraza: muro bajo a la cadera en vez de muro completo.
+# Terraza: muro bajo a la cadera hacia fuera y mampara hacia los ambientes.
 ALTURA_PARAPETO_TERRAZA = 0.95
+ALTURA_ZOCALO_MAMPARA = 0.10
+ESPESOR_MURO_EXTERIOR = 0.20
+ESPESOR_MURO_INTERIOR = 0.15
 
 PLANTILLA = Path(__file__).with_name("visor_3d.html")
 
@@ -415,35 +419,94 @@ def _es_terraza(ambiente) -> bool:
     return tipo_base(ambiente["id"]) == "terraza"
 
 
-def _muros_de_planta(piso, ambientes) -> list:
-    """Prismas de muro; los que rodean una terraza quedan a la cadera."""
+def _prismas(geometria, h0, h1, material) -> list:
+    return [
+        {"anillos": _anillos(p), "h0": _r(h0), "h1": _r(h1), "material": material}
+        for p in _poligonos(geometria)
+    ]
+
+
+def _franja(lineas, muros, medio):
+    """Parte de `muros` que recorre `lineas` (sin pasarse de sus extremos)."""
+    if lineas.is_empty:
+        return lineas
+    if lineas.geom_type == "MultiLineString":
+        lineas = linemerge(lineas)
+    return lineas.buffer(medio, cap_style=2, join_style=2).intersection(muros)
+
+
+def _montantes(geometria) -> list:
+    """Perfiles verticales de una mampara, cada ~1 m."""
+    piezas = []
+    for p in _poligonos(geometria):
+        x0, y0, x1, y1 = p.bounds
+        a_lo_largo_de_x = (x1 - x0) >= (y1 - y0)
+        largo = (x1 - x0) if a_lo_largo_de_x else (y1 - y0)
+        tramos = max(1, round(largo / 1.0))
+        for k in range(tramos + 1):
+            t = (x0 if a_lo_largo_de_x else y0) + k * largo / tramos
+            if a_lo_largo_de_x:
+                caja = (t - 0.025, y0, t + 0.025, y1)
+            else:
+                caja = (x0, t - 0.025, x1, t + 0.025)
+            piezas.append(_caja(*caja, ALTURA_ZOCALO_MAMPARA, ALTURA_PUERTA, "metal"))
+    return piezas
+
+
+def _muros_de_planta(piso, ambientes) -> tuple[list, list]:
+    """
+    (prismas de muro, piezas). Alrededor de una terraza, el muro que da al
+    exterior queda a la cadera (parapeto) y el que comparte con otro ambiente
+    es una mampara de vidrio, para que el vecino no se quede sin pared.
+    """
     poligonos = _poligonos((piso.aberturas or {}).get("muros_con_aberturas"))
     if not poligonos:
-        return []
+        return [], []
     muros = unary_union(poligonos)
 
-    terrazas = [a["poligono"] for a in ambientes if _es_terraza(a)]
+    terrazas = [a for a in ambientes if _es_terraza(a)]
     if not terrazas:
-        return [
-            {"anillos": _anillos(p), "h0": 0.0, "h1": ALTURA_MURO, "material": "muro"}
-            for p in _poligonos(muros)
-        ]
+        return _prismas(muros, 0.0, ALTURA_MURO, "muro"), []
 
-    # Franja de muro que pertenece a cada terraza (su contorno más el espesor).
-    anillo_terrazas = unary_union([t.buffer(0.26) for t in terrazas]).intersection(muros)
-    altos = muros.difference(anillo_terrazas)
-    parapetos = muros.intersection(anillo_terrazas)
+    parapetos, mamparas = [], []
+    for terraza in terrazas:
+        otros = unary_union([
+            a["poligono"] for a in ambientes if a["id"] != terraza["id"]
+        ]).buffer(0.01) if len(ambientes) > 1 else None
+        borde = terraza["poligono"].boundary
+        compartido = borde.intersection(otros) if otros is not None else None
+        exterior = borde.difference(otros) if otros is not None else borde
+        parapetos.append(_franja(exterior, muros, ESPESOR_MURO_EXTERIOR / 2 + 0.01))
+        if compartido is not None and not compartido.is_empty:
+            mamparas.append(_franja(compartido, muros, ESPESOR_MURO_INTERIOR / 2 + 0.01))
 
-    prismas = [
-        {"anillos": _anillos(p), "h0": 0.0, "h1": ALTURA_MURO, "material": "muro"}
-        for p in _poligonos(altos)
-    ]
-    prismas += [
-        {"anillos": _anillos(p), "h0": 0.0, "h1": ALTURA_PARAPETO_TERRAZA,
-         "material": "parapeto"}
-        for p in _poligonos(parapetos)
-    ]
-    return prismas
+    parapeto = unary_union(parapetos)
+    mampara = unary_union(mamparas).difference(parapeto) if mamparas else None
+    bajos = parapeto if mampara is None else unary_union([parapeto, mampara])
+
+    prismas = _prismas(muros.difference(bajos), 0.0, ALTURA_MURO, "muro")
+    prismas += _prismas(parapeto, 0.0, ALTURA_PARAPETO_TERRAZA, "parapeto")
+    piezas = []
+    if mampara is not None and not mampara.is_empty:
+        prismas += _prismas(mampara, 0.0, ALTURA_ZOCALO_MAMPARA, "muro")
+        prismas += _prismas(mampara.buffer(-0.06, join_style=2),
+                            ALTURA_ZOCALO_MAMPARA, ALTURA_PUERTA, "vidrio")
+        prismas += _prismas(mampara, ALTURA_PUERTA, ALTURA_MURO, "muro")
+        piezas += _montantes(mampara)
+    return prismas, piezas
+
+
+def _ventana_de_terraza(ventana) -> bool:
+    return tipo_base(ventana.get("ambiente_a") or "") == "terraza"
+
+
+def _relleno_de_ventana(ventana) -> dict:
+    """Parapeto que tapa el hueco de una ventana que la terraza no lleva."""
+    hueco = construir_abertura(
+        tuple(ventana["centro"]), ventana["ancho"],
+        ventana["espesor_muro"], ventana["orientacion"],
+    )
+    return _caja(*hueco.bounds, 0.0, ALTURA_PARAPETO_TERRAZA, "parapeto")
 
 
 def piezas_de_terraza(ambiente) -> list:
@@ -491,88 +554,26 @@ def piezas_de_terraza(ambiente) -> list:
 # Escaleras
 # ------------------------------------------------------------
 
-HUELLA_PELDANO = 0.28  # fondo de cada escalón
-PASO_ESCALERA = 0.90   # ancho libre del tramo
+def _escalera(piso):
+    """Ambiente escalera de una planta (o None)."""
+    return next(
+        (a for a in piso.geometrias["ambientes"] if tipo_base(a["id"]) == "escalera"),
+        None,
+    )
 
 
-def piezas_de_escalera(ambiente, sube=ALTURA_ENTREPISO) -> list:
-    """Peldaños 3D que suben `sube` m dentro del polígono de la escalera.
-
-    Tramo recto a lo largo del lado más largo; si no caben los peldaños, en L
-    con un descanso. Si el ambiente es casi cuadrado, escalera de caracol.
-    """
-    x0, y0, x1, y1 = ambiente["poligono"].bounds
-    ancho, largo = x1 - x0, y1 - y0
-    casi_cuadrado = abs(ancho - largo) < 0.15 * max(ancho, largo)
-
-    if casi_cuadrado and min(ancho, largo) >= 1.8:
-        return _escalera_caracol(x0, y0, x1, y1, sube)
-    return _escalera_recta(x0, y0, x1, y1, sube)
-
-
-def _escalera_recta(x0, y0, x1, y1, sube) -> list:
-    ancho, largo = x1 - x0, y1 - y0
-    # El tramo corre a lo largo del lado mayor.
-    horizontal = ancho >= largo
-    recorrido = (ancho if horizontal else largo) - 0.1
-    n = max(3, int(sube / 0.18))  # contrahuella objetivo ~0.18 m
-    contrahuella = sube / n
-    paso = min(PASO_ESCALERA, (largo if horizontal else ancho) - 0.1)
-
-    if n * HUELLA_PELDANO <= recorrido:
-        tramos = [(n, 0)]  # un solo tramo recto
-    else:
-        # En L: mitad de peldaños por tramo, con un descanso en la esquina.
-        mitad = n // 2
-        tramos = [(mitad, 0), (n - mitad, 1)]
-
-    piezas = []
-    altura = 0.0
-    bx, by = x0 + 0.05, y0 + 0.05
-    for cantidad, giro in tramos:
-        for i in range(cantidad):
-            altura += contrahuella
-            if (giro == 0) == horizontal:
-                px = bx + i * HUELLA_PELDANO
-                piezas.append(_caja(px, by, px + HUELLA_PELDANO, by + paso,
-                                    0, altura, "madera"))
-            else:
-                py = by + i * HUELLA_PELDANO
-                piezas.append(_caja(bx, py, bx + paso, py + HUELLA_PELDANO,
-                                    0, altura, "madera"))
-        # Punto de partida del siguiente tramo (descanso en la esquina).
-        if horizontal:
-            bx = x0 + 0.05 + (cantidad - 1) * HUELLA_PELDANO
-            by = by + paso
-        else:
-            by = y0 + 0.05 + (cantidad - 1) * HUELLA_PELDANO
-            bx = bx + paso
-    return piezas
-
-
-def _escalera_caracol(x0, y0, x1, y1, sube) -> list:
-    import math
-
-    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    radio = min(x1 - x0, y1 - y0) / 2 - 0.08
-    n = max(10, int(sube / 0.19))
-    contrahuella = sube / n
-    paso_ang = math.radians(300 / n)  # algo menos de una vuelta completa
-
-    piezas = [
-        _caja(cx - 0.06, cy - 0.06, cx + 0.06, cy + 0.06, 0, sube, "metal",
-              "cilindro")
-    ]
-    altura = 0.0
-    for i in range(n):
-        altura += contrahuella
-        ang = i * paso_ang
-        ex, ey = cx + radio * math.cos(ang), cy + radio * math.sin(ang)
-        piezas.append(_caja(
-            min(cx, ex), min(cy, ey), max(cx, ex), max(cy, ey),
-            altura - 0.05, altura, "madera",
-        ))
-    return piezas
+def trazado_entre(piso_bajo, piso_alto=None) -> dict | None:
+    """Trazado de la escalera que sube de `piso_bajo` a `piso_alto`."""
+    escalera = _escalera(piso_bajo)
+    if escalera is None:
+        return None
+    arriba = _escalera(piso_alto) if piso_alto is not None else None
+    return trazar_escalera(
+        escalera["poligono"],
+        puertas_de(piso_bajo, escalera["id"]),
+        puertas_de(piso_alto, arriba["id"]) if arriba else (),
+        sube=ALTURA_ENTREPISO,
+    )
 
 
 # ------------------------------------------------------------
@@ -597,29 +598,52 @@ def _desplazar(escena, dz) -> dict:
 
 def generar_escena_3d(
     piso, capas=CAPAS_POR_DEFECTO, resaltar=frozenset(), detalle=False,
-    base_z=0.0,
+    base_z=0.0, piso_inferior=None, piso_superior=None, entorno=False,
+    hueco_visible=True, ver_inferior=False,
 ) -> dict:
     """Escena serializable a JSON de un `ResultadoPlano`.
 
     Con `detalle` añade decoración, marcos, zócalos, la vereda de entrada y
     acabados de piso (ver `detalle_3d`); sin él la escena es la sencilla.
+
+    `piso_inferior` / `piso_superior` son las plantas vecinas: la escalera
+    sube si hay una planta encima (o si no hay ninguna debajo) y, en la planta
+    de llegada, se ve el hueco con su baranda. `entorno` (solo con `detalle`)
+    añade calle, árboles y personas; `hueco_visible` pinta el hueco de la
+    escalera (en la casa completa queda abierto).
     """
     ambientes = piso.geometrias["ambientes"]
     etiquetas = etiquetas_ambientes(piso.distribucion)
 
-    muros = _muros_de_planta(piso, ambientes)
+    muros, piezas = _muros_de_planta(piso, ambientes)
+    prismas = []
+
+    # Escalera: sube desde aquí o llega desde abajo (nunca las dos a la vez).
+    escalera = _escalera(piso)
+    sube = llega = None
+    if escalera is not None:
+        if piso_inferior is not None and piso_superior is None:
+            llega = trazado_entre(piso_inferior, piso)
+        else:
+            sube = trazado_entre(piso, piso_superior)
+    elevada = llega is not None and ver_inferior
 
     pisos = []
     rotulos = []
     for ambiente in ambientes:
         cambiado = "cambios" in capas and ambiente["id"] in resaltar
         color = color_de_ambiente(ambiente["nombre"])
-        pisos.append({
-            "anillos": _anillos(ambiente["poligono"]),
-            "h0": 0.0, "h1": GROSOR_PISO,
-            "color": "#FBBF24" if cambiado else aclarar(color, TINTE_PISO),
-            "id": ambiente["id"],
-        })
+        superficie = ambiente["poligono"]
+        if llega is not None and ambiente is escalera:
+            # Arriba solo hay piso en el desembarco; el resto es el hueco.
+            superficie = superficie.difference(llega["hueco"])
+        for parte in _poligonos(superficie):
+            pisos.append({
+                "anillos": _anillos(parte),
+                "h0": 0.0, "h1": GROSOR_PISO,
+                "color": "#FBBF24" if cambiado else aclarar(color, TINTE_PISO),
+                "id": ambiente["id"],
+            })
         if "etiquetas" in capas:
             c = ambiente["poligono"].centroid
             rotulos.append({
@@ -629,7 +653,6 @@ def generar_escena_3d(
                 "color": color,
             })
 
-    piezas = []
     for puerta in (piso.puertas or {}).get("puertas", []):
         dintel, hoja = _puerta(puerta, ambientes, detalle)
         piezas += dintel
@@ -639,6 +662,10 @@ def generar_escena_3d(
                 piezas += detalle_3d.marco_de_puerta(puerta)
 
     for ventana in (piso.ventanas or {}).get("ventanas", []):
+        if _ventana_de_terraza(ventana):
+            # La terraza no lleva ventanas: su parapeto sigue de corrido.
+            piezas.append(_relleno_de_ventana(ventana))
+            continue
         muro, vidrio = _ventana(ventana)
         piezas += muro
         if "ventanas" in capas:
@@ -646,10 +673,12 @@ def generar_escena_3d(
             if detalle:
                 piezas += detalle_3d.marco_de_ventana(ventana, _antepecho(ventana))
 
-    # Escaleras: peldaños que suben al piso siguiente (siempre, es estructura).
-    for ambiente in ambientes:
-        if tipo_base(ambiente["id"]) == "escalera":
-            piezas += piezas_de_escalera(ambiente)
+    if sube is not None:
+        piezas += [dict(p) for p in sube["piezas"]]
+    if llega is not None:
+        piezas += baranda_de_llegada(llega, escalera["poligono"])
+        if hueco_visible:
+            prismas += _prismas(llega["hueco"], 0.0, 0.02, "hueco")
 
     # Terrazas: macetas y pérgola de madera (su mobiliario propio).
     for ambiente in ambientes:
@@ -683,6 +712,7 @@ def generar_escena_3d(
         "muros": muros,
         "pisos": pisos,
         "piezas": piezas,
+        "prismas": prismas,
         "rotulos": rotulos,
     }
 
@@ -691,63 +721,94 @@ def generar_escena_3d(
             p["acabado"] = detalle_3d.acabado_de(p["id"])
         escena["detalle"] = True
         escena["terreno_acabado"] = "cesped"
-        escena["prismas"] = detalle_3d.zocalos(piso)
+        escena["prismas"] += detalle_3d.zocalos(piso)
         escena["piezas"] += detalle_3d.entrada(piso)
+        if entorno:
+            escena["piezas"] += entorno_3d.entorno(piso)
+            # Con el entorno a la vista, el encuadre abarca el lote entero.
+            escena["vivienda"] = list(escena["terreno"])
 
-    return _desplazar(escena, base_z)
+    if not elevada:
+        return _desplazar(escena, base_z)
+
+    # Planta alta vista sola: queda sobre la planta baja, que se dibuja
+    # translúcida debajo; el techo va abierto y la escalera sube del suelo.
+    escena = _desplazar(escena, base_z + ALTURA_ENTREPISO)
+    escena["prismas"] += _prismas(_contorno(piso_inferior), 0.0, ALTURA_MURO, "fantasma")
+    losa = _contorno(piso)
+    if not llega["hueco"].is_empty:
+        losa = losa.difference(llega["hueco"])
+    escena["prismas"] += _prismas(losa, ALTURA_MURO, ALTURA_ENTREPISO, "losa")
+    escena["piezas"] += [dict(p) for p in llega["piezas"]]
+    escena["altura_total"] = _r(ALTURA_ENTREPISO + ALTURA_MURO)
+    return escena
 
 
 def _contorno(piso):
     return unary_union([a["poligono"] for a in piso.geometrias["ambientes"]])
 
 
-def _escalera_de(piso):
-    return next(
-        (a["poligono"] for a in piso.geometrias["ambientes"]
-         if tipo_base(a["id"]) == "escalera"),
-        None,
-    )
+def _terrazas(piso):
+    return unary_union([
+        a["poligono"] for a in piso.geometrias["ambientes"] if _es_terraza(a)
+    ])
 
 
 def _losa(poligono, h0, h1, material) -> list:
     """Prismas de losa de un contorno (puede ser varias piezas)."""
-    return [
-        {"anillos": _anillos(p), "h0": _r(h0), "h1": _r(h1), "material": material}
-        for p in _poligonos(poligono)
-    ]
+    return _prismas(poligono, h0, h1, material)
 
 
 def generar_escena_casa(
     pisos, capas=CAPAS_POR_DEFECTO, detalle=False
 ) -> dict:
-    """Escena de la casa completa: plantas apiladas con entrepiso y azotea."""
-    pisos = list(pisos)
-    base = generar_escena_3d(pisos[0], capas, detalle=detalle, base_z=0.0)
+    """Escena de la casa completa: plantas apiladas con entrepiso y azotea.
 
-    for grupo in ("muros", "pisos", "piezas", "prismas", "rotulos"):
-        base.setdefault(grupo, [])
+    La escalera sube por un hueco del entrepiso hasta el desembarco; las
+    terrazas quedan a cielo abierto (con su pérgola), sin losa encima.
+    """
+    pisos = list(pisos)
+    base = None
+    # En la casa completa no van rótulos flotantes: se ve la casa, no los nombres.
+    capas_casa = frozenset(capas) - {"etiquetas"}
 
     for i, piso in enumerate(pisos):
-        if i > 0:
-            parcial = generar_escena_3d(
-                piso, capas, detalle=detalle, base_z=i * ALTURA_ENTREPISO
-            )
+        abajo = pisos[i - 1] if i > 0 else None
+        arriba = pisos[i + 1] if i + 1 < len(pisos) else None
+        parcial = generar_escena_3d(
+            piso, capas_casa, detalle=detalle, base_z=i * ALTURA_ENTREPISO,
+            piso_inferior=abajo, piso_superior=arriba, entorno=i == 0,
+            hueco_visible=False,
+        )
+        if arriba is not None:
+            # Las plantas de abajo quedan bajo techo: sus rótulos solo se
+            # amontonarían sobre la azotea.
+            parcial["rotulos"] = []
+        if base is None:
+            base = parcial
+            for grupo in ("muros", "pisos", "piezas", "prismas", "rotulos"):
+                base.setdefault(grupo, [])
+        else:
             for grupo in ("muros", "pisos", "piezas", "prismas", "rotulos"):
                 base[grupo] += parcial.get(grupo, [])
 
-        # Losa sobre la planta (entrepiso o azotea), con hueco en la escalera.
         techo_z = i * ALTURA_ENTREPISO + ALTURA_MURO
-        es_azotea = i == len(pisos) - 1
-        contorno = _contorno(piso)
-        hueco = None if es_azotea else _escalera_de(piso)
-        losa = contorno.difference(hueco) if hueco is not None else contorno
-        base["prismas"] += _losa(losa, techo_z, techo_z + GROSOR_LOSA, "losa")
+        cubierta = _contorno(piso).difference(_terrazas(piso))
 
-        if es_azotea:
-            # Parapeto: franja interior del borde del contorno.
-            ring = contorno.difference(contorno.buffer(-ESPESOR_PARAPETO))
+        if arriba is not None:
+            # Entrepiso: lo techado de esta planta más lo que se apoya encima,
+            # con el hueco por el que pasa la escalera.
+            losa = unary_union([cubierta, _contorno(arriba)])
+            trazado = trazado_entre(piso, arriba)
+            if trazado is not None and not trazado["hueco"].is_empty:
+                losa = losa.difference(trazado["hueco"])
+            base["prismas"] += _losa(losa, techo_z, techo_z + GROSOR_LOSA, "losa")
+        else:
+            # Azotea plana con su parapeto en el borde.
+            base["prismas"] += _losa(cubierta, techo_z, techo_z + GROSOR_LOSA, "losa")
+            borde = cubierta.difference(cubierta.buffer(-ESPESOR_PARAPETO))
             base["prismas"] += _losa(
-                ring, techo_z + GROSOR_LOSA,
+                borde, techo_z + GROSOR_LOSA,
                 techo_z + GROSOR_LOSA + ALTO_PARAPETO_AZOTEA, "parapeto",
             )
 

@@ -1,6 +1,6 @@
 import math
 
-from src.models.requirements import RequerimientosArquitectonicos
+from src.models.requirements import Ambiente, RequerimientosArquitectonicos
 from src.utils.texto import normalizar_nombre
 
 
@@ -119,6 +119,77 @@ def estimar_area_total_vivienda(
     return requerimientos
 
 
+# Casa básica: los ambientes que siempre lleva y su superficie en 25 m².
+AREAS_CASA_BASICA = {
+    "sala": 6.5,
+    "comedor": 4.5,
+    "cocina": 4.5,
+    "dormitorio": 6.5,
+    "baño": 3.0,
+}
+AREA_CASA_BASICA = 25.0
+AREA_MINIMA_CASA_BASICA = 22.0   # por debajo, algún mueble no entra
+AREA_MAXIMA_CASA_BASICA = 30.0
+
+
+def _tipo_basico(nombre: str) -> str:
+    """'Dormitorio principal' -> 'dormitorio'; 'Baño' -> 'bano'."""
+    nombre = normalizar_nombre(nombre)
+    return next(
+        (t for t in ("dormitorio", "bano") if nombre.startswith(t)), nombre
+    )
+
+
+def completar_casa_basica(requerimientos):
+    """
+    En una casa de un piso sin lista de ambientes, o de hasta 30 m², añade los
+    que falten de sala, comedor, cocina, dormitorio y baño. En las de hasta
+    30 m² marca el programa compacto (sin pasillo ni reserva de circulación).
+    """
+
+    if (requerimientos.numero_pisos or 1) != 1:
+        return requerimientos
+
+    area = requerimientos.area_total_vivienda_m2
+    sin_lista = not requerimientos.ambientes
+    if sin_lista and area is None:
+        area = requerimientos.area_total_vivienda_m2 = AREA_CASA_BASICA
+
+    compacta = area is not None and area <= AREA_MAXIMA_CASA_BASICA
+    if not (sin_lista or compacta):
+        return requerimientos
+
+    if compacta and area < AREA_MINIMA_CASA_BASICA:
+        raise ValueError(
+            f"La casa básica necesita al menos {AREA_MINIMA_CASA_BASICA:g} m² "
+            f"para sala, comedor, cocina, dormitorio y baño; pediste {area:g} m²."
+        )
+
+    pedidos = {_tipo_basico(a.nombre) for a in requerimientos.ambientes}
+    faltan = [n for n in AREAS_CASA_BASICA if _tipo_basico(n) not in pedidos]
+    requerimientos.ambientes = [
+        *requerimientos.ambientes, *(Ambiente(nombre=n) for n in faltan)
+    ]
+    requerimientos.ambientes_agregados = faltan
+
+    if not compacta:
+        return requerimientos
+
+    requerimientos.programa_basico = True
+    ambientes = requerimientos.ambientes
+    solo_basicos = len(ambientes) == len(AREAS_CASA_BASICA) and all(
+        a.cantidad == 1 and a.area_objetivo_m2 is None
+        and a.area_minima_m2 is None for a in ambientes
+    )
+    if solo_basicos:
+        areas = {_tipo_basico(n): v for n, v in AREAS_CASA_BASICA.items()}
+        for ambiente in ambientes:
+            valor = areas[_tipo_basico(ambiente.nombre)] * area / AREA_CASA_BASICA
+            ambiente.area_objetivo_m2 = math.floor(valor * 100 + 1e-6) / 100
+
+    return requerimientos
+
+
 def calcular_areas_predeterminadas(
     requerimientos: RequerimientosArquitectonicos
 ):
@@ -138,7 +209,9 @@ def calcular_areas_predeterminadas(
     if not requerimientos.ambientes:
         raise ValueError("No se han especificado ambientes.")
 
-    area_util = area_total * (1 - PORCENTAJE_CIRCULACION)
+    # En una casa mínima la sala es la circulación: no se reserva superficie.
+    circulacion = 0 if requerimientos.programa_basico else PORCENTAJE_CIRCULACION
+    area_util = area_total * (1 - circulacion)
 
     area_reservada = 0
     ambientes_pendientes = []
@@ -227,6 +300,40 @@ def calcular_areas_predeterminadas(
                 f"de {ambiente.nombre}."
             )
 
+    return requerimientos
+
+
+FACTOR_TERRENO_VIVIENDA = 2.5   # el lote es 2.5 veces la casa: sobra sitio para jardín y calle
+ASPECTO_TERRENO = 1.25          # largo / ancho
+
+
+def estimar_terreno_para_vivienda(requerimientos):
+    """
+    Si el usuario no dio el terreno, lo calcula desde el área de la vivienda
+    (con holgura para jardín, árboles y calle). No hace nada si ya hay terreno
+    o si todavía no se conoce el área de la vivienda.
+    """
+
+    ya_hay_terreno = (
+        requerimientos.ancho_terreno_m is not None
+        or requerimientos.largo_terreno_m is not None
+        or requerimientos.area_terreno_m2 is not None
+    )
+    area_vivienda = requerimientos.area_total_vivienda_m2
+
+    if ya_hay_terreno or not area_vivienda or area_vivienda <= 0:
+        return requerimientos
+
+    area = area_vivienda * FACTOR_TERRENO_VIVIENDA
+    ancho = math.sqrt(area / ASPECTO_TERRENO)
+    largo = ancho * ASPECTO_TERRENO
+
+    requerimientos.ancho_terreno_m = round(ancho, 1)
+    requerimientos.largo_terreno_m = round(largo, 1)
+    requerimientos.area_terreno_m2 = round(
+        requerimientos.ancho_terreno_m * requerimientos.largo_terreno_m, 2
+    )
+    requerimientos.terreno_estimado = True
     return requerimientos
 
 

@@ -9,6 +9,8 @@ from src.models.requirements import RequerimientosArquitectonicos
 from src.models.defaults import (
     calcular_areas_predeterminadas,
     estimar_area_total_vivienda,
+    estimar_terreno_para_vivienda,
+    completar_casa_basica,
     completar_dimensiones_terreno
 )
 
@@ -240,6 +242,9 @@ No agregues explicaciones antes ni despues.
     if isinstance(datos, dict):
         datos.pop("norte", None)
         datos.pop("retiros", None)
+        # Los decide el sistema, no el modelo.
+        for campo in ("terreno_estimado", "programa_basico", "ambientes_agregados"):
+            datos.pop(campo, None)
 
     try:
 
@@ -275,6 +280,21 @@ No agregues explicaciones antes ni despues.
     # --------------------------------------------------------
     # 2. COMPLETAR DIMENSIONES DEL TERRENO
     # --------------------------------------------------------
+
+    requerimientos = completar_casa_basica(requerimientos)
+
+    # Solo con la lista de ambientes: primero se estima el área de la vivienda.
+    if (
+        requerimientos.area_total_vivienda_m2 is None
+        and requerimientos.ancho_terreno_m is None
+        and requerimientos.largo_terreno_m is None
+        and requerimientos.area_terreno_m2 is None
+        and requerimientos.ambientes
+    ):
+        requerimientos = estimar_area_total_vivienda(requerimientos)
+
+    # Sin terreno pero con área de vivienda: el lote se calcula desde ella.
+    requerimientos = estimar_terreno_para_vivienda(requerimientos)
 
     requerimientos = completar_dimensiones_terreno(
         requerimientos

@@ -10,6 +10,8 @@ from src.planning.reglas_ambientes import (  # noqa: F401
     LONGITUD_MINIMA_ADYACENCIA_DM,
     LONGITUD_MINIMA_ACCESO_DM,
     MIN_LADO_PASILLO_DM,
+    AREA_MINIMA_ESCALERA_M2,
+    AREA_OBJETIVO_ESCALERA_M2,
     SEPARACION_MINIMA_DM,
     TIEMPO_MAXIMO_REGLAS_SEGUNDOS,
     HOLGURA_AREA_COMPACTACION,
@@ -1033,9 +1035,9 @@ def repartir_en_plantas(ambientes) -> tuple[list, list]:
             del alta[posicion]
         baja.append(bano.model_copy(update={"cantidad": 1}))
 
-    # La terraza sube como balcón/azotea, pero solo si ya hay privados arriba
-    # (si no, una planta alta de solo terraza no tendría sentido).
-    if alta:
+    # La terraza sube como balcón, pero solo si arriba hay un dormitorio desde
+    # el que salir a ella (a la terraza no se entra desde la escalera).
+    if any(normalizar_nombre(a.nombre).startswith("dormitorio") for a in alta):
         def es_terraza(a):
             return normalizar_nombre(a.nombre).startswith("terraza")
 
@@ -1165,7 +1167,11 @@ def optimizar_por_pisos(requerimientos) -> list[list[dict]]:
         return [optimizar_distribucion(requerimientos)]
 
     def programa(ambientes):
-        ambientes = [*ambientes, Ambiente(nombre="escalera", cantidad=1)]
+        ambientes = [*ambientes, Ambiente(
+            nombre="escalera", cantidad=1,
+            area_minima_m2=AREA_MINIMA_ESCALERA_M2,
+            area_objetivo_m2=AREA_OBJETIVO_ESCALERA_M2,
+        )]
         return requerimientos.model_copy(update={
             "ambientes": ambientes,
             "numero_pisos": 1,

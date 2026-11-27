@@ -459,11 +459,12 @@ def espacio_de_trabajo(proyecto: dict) -> None:
     actual = pry.version_actual(proyecto)
     versiones = len(proyecto["versiones"])
 
-    izquierda, derecha = st.columns([2, 3], gap="large")
+    # El chat va en la barra lateral: el plano ocupa todo el ancho de la página.
+    izquierda, derecha = st.sidebar, st.container()
 
     with izquierda:
         st.subheader("Conversación")
-        caja = st.container(height=460, border=True)
+        caja = st.container(height=420, border=True)
         entrada = st.chat_input(
             "Pide un cambio al plano…",
             key="entrada_chat",
@@ -562,8 +563,6 @@ def espacio_de_trabajo(proyecto: dict) -> None:
                  "visor gratuito como BIM Vision.",
         )
 
-        _datos_del_membrete(proyecto)
-
         mostrar_resultado(
             actual["resultado"],
             proyecto["requerimientos"],
@@ -571,13 +570,18 @@ def espacio_de_trabajo(proyecto: dict) -> None:
             cambiados=actual["cambiados"],
         )
 
+        _datos_del_membrete(proyecto)
+
 
 # ============================================================
 # PUNTO DE ENTRADA
 # ============================================================
 
-def _sidebar_proveedor():
-    """Muestra información del proveedor LLM activo en la barra lateral."""
+def _sidebar_proveedor(plegado: bool = False):
+    """Muestra información del proveedor LLM activo en la barra lateral.
+
+    `plegado` la guarda en un desplegable (bajo el chat, en el proyecto).
+    """
     provider = os.getenv("LLM_PROVIDER", "groq").lower()
 
     iconos = {
@@ -590,7 +594,13 @@ def _sidebar_proveedor():
     icono = iconos.get(provider, "🤖")
 
     with st.sidebar:
-        st.markdown("### Proveedor LLM")
+        if plegado:
+            st.divider()
+        contenedor = st.expander("Proveedor LLM") if plegado else st.container()
+
+    with contenedor:
+        if not plegado:
+            st.markdown("### Proveedor LLM")
 
         if provider == "groq":
             modelo = os.getenv("LLM_GROQ_MODEL", "openai/gpt-oss-20b")
@@ -634,7 +644,11 @@ def _sidebar_proveedor():
 
         st.divider()
 
-        with st.expander("¿Cómo cambiar de proveedor?"):
+        # Dentro de un desplegable no se puede abrir otro: va a la vista.
+        ayuda = st.container() if plegado else st.expander("¿Cómo cambiar de proveedor?")
+        with ayuda:
+            if plegado:
+                st.caption("¿Cómo cambiar de proveedor?")
             st.markdown(
                 "Edita el archivo `.env` en la raíz del proyecto:\n\n"
                 "```\n"
@@ -663,17 +677,18 @@ def main():
     )
 
     aplicar_tema()
-    _sidebar_proveedor()
-
-    st.title("Agente Arquitectónico")
-    st.write(
-        "Sistema de generación y edición de planos arquitectónicos "
-        "mediante inteligencia artificial."
-    )
 
     proyecto = st.session_state.get("proyecto")
 
     if proyecto is None:
+        _sidebar_proveedor()
+        st.title("Agente Arquitectónico")
+        st.write(
+            "Sistema de generación y edición de planos arquitectónicos "
+            "mediante inteligencia artificial."
+        )
         inicio()
     else:
+        # El chat ocupa la barra lateral; el proveedor queda plegado debajo.
         espacio_de_trabajo(proyecto)
+        _sidebar_proveedor(plegado=True)

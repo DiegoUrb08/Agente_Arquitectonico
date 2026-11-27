@@ -31,7 +31,9 @@ VISTA_VIVIENDA = "Ajustar a la vivienda"
 
 MODO_2D = "Plano 2D"
 MODO_3D = "Vista 3D"
-ALTURA_3D = 560
+ALTURA_3D = 760  # el visor es el protagonista de la página
+ALTURA_SVG_BASE = 760
+ALTURA_SVG_MAXIMA = 900
 
 VISTA_PLANTA = "Esta planta"
 VISTA_CASA = "Casa completa"
@@ -98,12 +100,31 @@ def _mostrar_svg(
         norte=norte,
         retiros=retiros,
     )
-    altura = int(max(360, min(780, 640 * proporcion_vista(piso, enfocar))))
+    altura = int(max(
+        420, min(ALTURA_SVG_MAXIMA, ALTURA_SVG_BASE * proporcion_vista(piso, enfocar))
+    ))
     st.iframe(documento_svg(svg), height=altura)
 
 
-def _mostrar_3d(piso, capas, clave: str, cambiados, detalle: bool) -> None:
-    escena = generar_escena_3d(piso, capas, resaltar=cambiados, detalle=detalle)
+def vecinos(pisos, piso) -> dict:
+    """Plantas de abajo y de arriba de `piso` (para la escalera)."""
+    indice = next((i for i, p in enumerate(pisos or []) if p is piso), None)
+    if indice is None:
+        return {}
+    return {
+        "piso_inferior": pisos[indice - 1] if indice > 0 else None,
+        "piso_superior": pisos[indice + 1] if indice + 1 < len(pisos) else None,
+        # Calle y árboles solo alrededor de la planta baja.
+        "entorno": indice == 0,
+        # La planta alta se ve sobre la baja, con su volumen debajo.
+        "ver_inferior": indice > 0,
+    }
+
+
+def _mostrar_3d(piso, capas, clave: str, cambiados, detalle: bool, pisos=None) -> None:
+    escena = generar_escena_3d(
+        piso, capas, resaltar=cambiados, detalle=detalle, **vecinos(pisos, piso)
+    )
     st.iframe(documento_3d(escena, uid=clave), height=ALTURA_3D)
 
 
@@ -155,7 +176,7 @@ def visor_plano(
                 "El resaltado de cambios solo se ve por planta."
             )
         else:
-            _mostrar_3d(piso, capas, clave, cambiados, detalle)
+            _mostrar_3d(piso, capas, clave, cambiados, detalle, pisos)
             if cambiados and "cambios" in capas:
                 st.caption("En ámbar: el piso de lo que cambió en esta versión.")
             else:
@@ -313,7 +334,6 @@ def mostrar_resultado(
         indice = etiquetas.index(elegido) if elegido in etiquetas else 0
 
     piso = pisos[indice]
-    tarjetas_resumen(piso)
 
     if piso.avisos:
         st.warning(
@@ -342,3 +362,7 @@ def mostrar_resultado(
     if requerimientos is not None:
         with pestanas[4]:
             st.json(requerimientos.model_dump())
+
+    # Debajo del visor, para que el plano ocupe la pantalla.
+    with st.expander("Resumen de la planta"):
+        tarjetas_resumen(piso)
